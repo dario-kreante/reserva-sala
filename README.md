@@ -1,4 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Sistema de Reserva de Salas - Facultad de Psicología
+
+Este proyecto es un sistema de gestión y reserva de salas para la Facultad de Psicología, desarrollado con Next.js, Tailwind CSS y Supabase.
+
+## Características
+
+- Gestión de salas y horarios
+- Reserva de salas con aprobación
+- Calendario de disponibilidad
+- Panel de administración
+- Notificaciones de estado de reservas
+- Reportes y estadísticas de uso
+
+## Tecnologías
+
+- Next.js 14
+- React
+- Tailwind CSS
+- Supabase (PostgreSQL)
+- TypeScript
+- FullCalendar
+
+## Instalación
+
+1. Clonar el repositorio
+2. Instalar dependencias: `npm install`
+3. Configurar variables de entorno
+4. Ejecutar en desarrollo: `npm run dev`
+
+## Estructura del Proyecto
+
+- `/app`: Páginas y rutas de la aplicación
+- `/components`: Componentes reutilizables
+- `/hooks`: Custom hooks
+- `/lib`: Utilidades y configuración
+- `/types`: Definiciones de tipos TypeScript
+
+## Licencia
+
+Este proyecto es privado y de uso exclusivo para la Facultad de Psicología.
 
 ## Getting Started
 
