@@ -1,0 +1,1 @@
+CREATE OR REPLACE FUNCTION public.obtener_responsables_sala(sala_id_param integer) RETURNS TABLE (nombre_completo text) LANGUAGE plpgsql AS $$ BEGIN RETURN QUERY SELECT (u.nombre || ' ' || u.apellido)::text as nombre_completo FROM salas_responsables sr JOIN usuarios u ON sr.usuario_id = u.id WHERE sr.sala_id = sala_id_param; END; $$;

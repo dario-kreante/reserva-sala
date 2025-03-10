@@ -2,26 +2,194 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
-  color: var(--foreground);
-  background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
 }
 
 @layer utilities {
   .text-balance {
-    text-wrap: balance;
+    text-align: center;
+    max-width: 100%;
+    margin-left: auto;
+    margin-right: auto;
   }
 }
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --radius: 0.5rem;
+  }
+  .dark {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+}
+
+/* Estilos para el calendario */
+.calendar-container {
+  position: relative;
+}
+
+.calendar-container .fc {
+  height: 100%;
+  background: white;
+}
+
+/* Mejorar la visualización de los eventos del calendario */
+.calendar-container .fc-timegrid-event {
+  border-radius: 0.375rem; /* rounded-md */
+  border-width: 1px; /* border */
+  z-index: 1;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.calendar-container .fc-timegrid-event:hover {
+  z-index: 5 !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  transform: scale(1.02);
+}
+
+.calendar-container .fc-view-harness {
+  z-index: 0;
+}
+
+.calendar-container .fc-toolbar {
+  z-index: 1;
+}
+
+/* Asegurar que el contenedor del calendario no oculte elementos */
+.calendar-container {
+  position: relative;
+}
+
+.calendar-container .fc {
+  height: 100%;
+  background: white;
+}
+
+.calendar-container .fc-view-harness {
+  z-index: 0;
+}
+
+/* Mejorar la visualización de los días de la semana */
+.calendar-container .fc-col-header-cell {
+  background-color: #f9fafb;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+/* Mejorar la visualización de las horas */
+.calendar-container .fc-timegrid-slot {
+  height: 3rem !important;
+}
+
+/* Mejorar la visualización de los eventos */
+.calendar-container .fc-timegrid-event {
+  padding: 0.25rem !important;
+}
+
+/* Destacar la hora actual */
+.calendar-container .fc-timegrid-now-indicator-line {
+  border-color: #ef4444 !important;
+  border-width: 2px;
+}
+
+.calendar-container .fc-timegrid-now-indicator-arrow {
+  border-color: #ef4444 !important;
+  border-width: 5px;
+}
+
+.calendar-container .fc-theme-standard td, 
+.calendar-container .fc-theme-standard th {
+  border-color: rgb(226, 232, 240); /* border-slate-200 */
+}
+
+.calendar-container .fc-toolbar-title {
+  font-size: 1.125rem; /* text-lg */
+  font-weight: 600; /* font-semibold */
+}
+
+.calendar-container .fc-button {
+  background-color: rgb(241, 245, 249); /* bg-slate-100 */
+  color: rgb(51, 65, 85); /* text-slate-700 */
+  border-color: rgb(226, 232, 240); /* border-slate-200 */
+}
+
+.calendar-container .fc-button:hover {
+  background-color: rgb(226, 232, 240); /* hover:bg-slate-200 */
+}
+
+.calendar-container .fc-button-active {
+  background-color: #3b82f6 !important;
+  border-color: #3b82f6 !important;
+}
+
+/* Clases para los indicadores de color */
+.color-indicator {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 9999px;
+}
+
+.color-indicator-0 { background-color: #0088FE; }
+.color-indicator-1 { background-color: #00C49F; }
+.color-indicator-2 { background-color: #FFBB28; }
+.color-indicator-3 { background-color: #FF8042; }
+.color-indicator-4 { background-color: #8884d8; }
