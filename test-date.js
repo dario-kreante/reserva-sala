@@ -1,0 +1,1 @@
+let fecha="2025-03-20"; let fechaObj = new Date(fecha); console.log("Fecha original:", fecha); console.log("Objeto Date:", fechaObj); console.log("toISOString:", fechaObj.toISOString()); console.log("Día del mes:", fechaObj.getDate()); console.log("getTimezoneOffset:", fechaObj.getTimezoneOffset());

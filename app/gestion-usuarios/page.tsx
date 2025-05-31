@@ -70,7 +70,7 @@ export default function GestionUsuarios() {
   })
   const [editandoUsuario, setEditandoUsuario] = useState<Usuario | null>(null)
 
-  const roles = ['admin', 'usuario', 'superadmin']
+  const roles = ['admin', 'usuario', 'superadmin', 'administrativo']
   const departamentos = ['Informática', 'Recursos Humanos', 'Finanzas', 'Marketing', 'Operaciones']
 
   useEffect(() => {

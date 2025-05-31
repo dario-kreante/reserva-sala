@@ -15,6 +15,7 @@ import {
 import FullCalendar from '@fullcalendar/react'
 import timeGridPlugin from '@fullcalendar/timegrid'
 import interactionPlugin from '@fullcalendar/interaction'
+import dayGridPlugin from '@fullcalendar/daygrid'
 import esLocale from '@fullcalendar/core/locales/es'
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -22,7 +23,8 @@ import {
 } from 'recharts'
 import { 
   Users, CalendarCheck2, Clock, TrendingUp,
-  BarChart3, PieChart as PieChartIcon, Download, Plus, X
+  BarChart3, PieChart as PieChartIcon, Download, Plus, X,
+  User, Building, Calendar, MessageSquare, Tag
 } from 'lucide-react'
 import { toast } from "@/components/ui/use-toast"
 import {
@@ -41,6 +43,8 @@ import {
 import { supabase } from "@/lib/supabase"
 import * as XLSX from 'xlsx'
 import Link from "next/link"
+import { esFechaValida, validarHorarioConsistente } from "./utils/horarioValidation"
+import { Textarea } from "@/components/ui/textarea"
 
 // Función para calcular la duración en horas entre dos horas
 const calcularDuracion = (horaInicio: string, horaFin: string): number => {
@@ -88,8 +92,12 @@ export default function Home() {
   const calendarRef = useRef<any>(null)
   const { reservas: reservasData, loading: loadingReservasData, fetchReservas, salas: salasData } = useReservasData()
   const { usuarios: usuariosData, loading: loadingUsuariosData } = useUsuariosData()
-  const [reservaSeleccionada, setReservaSeleccionada] = useState<any>(null);
-  const [detalleAbierto, setDetalleAbierto] = useState(false);
+  const [reservaSeleccionada, setReservaSeleccionada] = useState<any>(null)
+  const [detalleAbierto, setDetalleAbierto] = useState(false)
+  
+  // Agregar estados para el diálogo de rechazo
+  const [dialogoRechazoAbierto, setDialogoRechazoAbierto] = useState(false)
+  const [comentarioRechazo, setComentarioRechazo] = useState('')
 
   useEffect(() => {
     if (!loadingReservasData) {
@@ -108,14 +116,50 @@ export default function Home() {
 
   useEffect(() => {
     if (!loadingReservas && !loadingUsuarios) {
-      const today = new Date().toISOString().split('T')[0]
-      const reservasFiltradas = reservas.filter(r => r.usuario?.id !== '4a8794b5-139a-4d5d-a9da-dc2873665ca9')
+      // Calcular fecha de hoy en formato YYYY-MM-DD para comparación
+      const hoy = new Date().toISOString().split('T')[0];
+      console.log(`Fecha de hoy para estadísticas: ${hoy}`);
       
-      // Estadísticas básicas
-      const usuariosActivos = usuarios.filter(u => u.activo).length
-      const reservasHoy = reservasFiltradas.filter(r => r.fecha === today).length
-      const reservasPendientes = reservasFiltradas.filter(r => r.estado === 'pendiente').length
-
+      // Contar reservas pendientes
+      const pendientes = reservas.filter(r => r.estado === 'pendiente').length;
+      
+      // Contar reservas de hoy - normalizar el formato de fecha de cada reserva para comparar
+      const reservasHoy = reservas.filter(r => {
+        // Normalizar la fecha de la reserva al formato YYYY-MM-DD
+        let fechaNormalizada: string;
+        
+        if (r.fecha.includes('/')) {
+          // Si viene en formato DD/MM/YYYY
+          const partes = r.fecha.split('/');
+          if (partes.length === 3) {
+            fechaNormalizada = `${partes[2]}-${partes[1]}-${partes[0]}`;
+          } else {
+            console.error(`Formato de fecha incorrecto en reserva ${r.id}: ${r.fecha}`);
+            return false; // Excluir esta reserva si el formato es incorrecto
+          }
+        } else {
+          try {
+            // Si ya viene en formato YYYY-MM-DD o similar
+            const fechaObj = new Date(r.fecha);
+            // Verificar que la fecha sea válida
+            if (isNaN(fechaObj.getTime())) {
+              console.error(`Fecha inválida en reserva ${r.id}: ${r.fecha}`);
+              return false; // Excluir esta reserva si la fecha es inválida
+            }
+            fechaNormalizada = fechaObj.toISOString().split('T')[0];
+          } catch (error) {
+            console.error(`Error al procesar la fecha de reserva ${r.id}:`, error);
+            return false; // Excluir esta reserva si hay error al procesar
+          }
+        }
+        
+        // Comparar la fecha normalizada con hoy
+        return fechaNormalizada === hoy;
+      }).length;
+      
+      // Calcular usuarios activos (con al menos una reserva)
+      const usuariosActivos = new Set(reservas.filter(r => r.usuario?.id).map(r => r.usuario!.id)).size;
+      
       // Distribución de roles
       const roles = usuarios.reduce<Record<string, number>>((acc, user) => {
         acc[user.rol] = (acc[user.rol] || 0) + 1
@@ -123,7 +167,7 @@ export default function Home() {
       }, {})
 
       // Uso por sala (usando reservasFiltradas)
-      const usoPorSala = reservasFiltradas.reduce<Record<string, number>>((acc, reserva) => {
+      const usoPorSala = reservas.reduce<Record<string, number>>((acc, reserva) => {
         const nombreSala = reserva.sala?.nombre || 'Sin Sala'
         acc[nombreSala] = (acc[nombreSala] || 0) + 1
         return acc
@@ -136,32 +180,71 @@ export default function Home() {
         return d.toISOString().split('T')[0]
       }).reverse()
 
-      const reservasPorDia = ultimos7Dias.map(fecha => ({
-        fecha,
-        total: reservasFiltradas.filter(r => r.fecha === fecha).length
-      }))
-
-      // Filtrar reservas según el período seleccionado
-      const fechaLimite = new Date()
-      switch (periodoSeleccionado) {
-        case 'semana':
-          fechaLimite.setDate(fechaLimite.getDate() - 7)
-          break
-        case 'mes':
-          fechaLimite.setMonth(fechaLimite.getMonth() - 1)
-          break
-        case 'trimestre':
-          fechaLimite.setMonth(fechaLimite.getMonth() - 3)
-          break
-        case 'año':
-          fechaLimite.setFullYear(fechaLimite.getFullYear() - 1)
-          break
+      const reservasPorDia: { [key: string]: number } = {};
+      
+      // Determinar el rango de fechas según el período seleccionado
+      const hoyDate = new Date();
+      let startDate: Date;
+      
+      if (periodoSeleccionado === 'semana') {
+        startDate = new Date(hoyDate);
+        startDate.setDate(hoyDate.getDate() - 6);
+      } else if (periodoSeleccionado === 'mes') {
+        startDate = new Date(hoyDate);
+        startDate.setDate(hoyDate.getDate() - 29);
+      } else { // año
+        startDate = new Date(hoyDate);
+        startDate.setDate(hoyDate.getDate() - 364);
       }
-
-      const fechaLimiteStr = fechaLimite.toISOString().split('T')[0]
-      const reservasPeriodo = reservasFiltradas.filter(r => 
-        r.estado === 'aprobada' && r.fecha >= fechaLimiteStr
-      )
+      
+      // Inicializar todas las fechas en el rango con cero reservas
+      let currentDate = new Date(startDate);
+      while (currentDate <= hoyDate) {
+        const fechaKey = currentDate.toISOString().split('T')[0];
+        reservasPorDia[fechaKey] = 0;
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+      
+      // Contar reservas por día
+      reservas.forEach(reserva => {
+        try {
+          // Normalizar la fecha de la reserva
+          let fechaNormalizada: string;
+          
+          if (reserva.fecha.includes('/')) {
+            // Si viene en formato DD/MM/YYYY
+            const partes = reserva.fecha.split('/');
+            if (partes.length === 3) {
+              fechaNormalizada = `${partes[2]}-${partes[1]}-${partes[0]}`;
+            } else {
+              return; // Saltarse esta reserva
+            }
+          } else {
+            // Si ya viene en otro formato
+            const fechaObj = new Date(reserva.fecha);
+            if (isNaN(fechaObj.getTime())) {
+              return; // Saltarse esta reserva
+            }
+            fechaNormalizada = fechaObj.toISOString().split('T')[0];
+          }
+          
+          // Solo contar si está dentro del rango de fechas
+          const reservaDate = new Date(fechaNormalizada);
+          if (reservaDate >= startDate && reservaDate <= hoyDate) {
+            if (reservasPorDia[fechaNormalizada] !== undefined) {
+              reservasPorDia[fechaNormalizada]++;
+            }
+          }
+        } catch (error) {
+          console.error(`Error al procesar fecha para estadísticas: ${reserva.fecha}`, error);
+        }
+      });
+      
+      // Convertir a formato para el gráfico
+      const reservasPorDiaArray = Object.entries(reservasPorDia).map(([fecha, total]) => ({
+        fecha,
+        total
+      })).sort((a, b) => a.fecha.localeCompare(b.fecha));
 
       // Calcular tasa de uso por sala (en horas)
       const horasPorSala: Record<string, { horas: number; capacidadTotal: number }> = {}
@@ -169,7 +252,7 @@ export default function Home() {
       // Calcular horas totales disponibles por sala (8:00 a 19:00 = 11 horas por día)
       const horasDiarias = 11
       
-      // Definir días según el periodo seleccionado
+      // Definir días según el período seleccionado
       let diasPeriodo = 30; // valor por defecto
       if (periodoSeleccionado === 'semana') {
         diasPeriodo = 7;
@@ -188,7 +271,7 @@ export default function Home() {
       })
 
       // Sumar horas de uso por sala
-      reservasPeriodo.forEach(reserva => {
+      reservas.forEach(reserva => {
         if (reserva.sala) {
           const duracion = calcularDuracion(reserva.hora_inicio, reserva.hora_fin)
           const nombreSala = reserva.sala.nombre
@@ -220,7 +303,7 @@ export default function Home() {
         'Externo': { value: 0, count: 0 }
       }
 
-      reservasPeriodo.forEach(reserva => {
+      reservas.forEach(reserva => {
         const duracion = calcularDuracion(reserva.hora_inicio, reserva.hora_fin)
         const tipoSolicitante = reserva.es_externo ? 'Externo' : 'Interno'
         
@@ -239,8 +322,8 @@ export default function Home() {
         totalUsuarios: usuarios.length,
         usuariosActivos,
         reservasHoy,
-        reservasPendientes,
-        reservasPorDia,
+        reservasPendientes: pendientes,
+        reservasPorDia: reservasPorDiaArray,
         distribucionRoles: Object.entries(roles).map(([name, value]) => ({ name, value })),
         usoPorSala: Object.entries(usoPorSala).map(([name, value]) => ({ name, value })),
         tasaUsoSalas: tasaUsoSalasData,
@@ -251,34 +334,148 @@ export default function Home() {
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8']
 
-  const obtenerEventosCalendario = () => {
-    return reservas
-      .filter(r => r.usuario?.id !== '4a8794b5-139a-4d5d-a9da-dc2873665ca9')
-      .filter(r => salaSeleccionada === 'todas' || r.sala?.id.toString() === salaSeleccionada)
-      .map(reserva => ({
-        id: reserva.id.toString(),
-        title: `${reserva.sala?.nombre || 'Sin sala'} - ${reserva.usuario?.nombre || 'Usuario'}`,
-        start: `${reserva.fecha}T${reserva.hora_inicio}`,
-        end: `${reserva.fecha}T${reserva.hora_fin}`,
-        backgroundColor: getColorPorEstado(reserva.estado),
-        borderColor: getColorPorEstado(reserva.estado),
-        extendedProps: {
-          estado: reserva.estado,
-          sala: reserva.sala?.nombre,
-          usuario: reserva.usuario?.nombre,
-          reservaCompleta: reserva
-        }
-      }))
-  }
-
-  const getColorPorEstado = (estado: string) => {
-    switch (estado) {
-      case 'aprobada': return '#10B981'
-      case 'pendiente': return '#F59E0B'
-      case 'rechazada': return '#EF4444'
-      default: return '#6B7280'
+  // Función para obtener el color del evento según el estado
+  const getColorPorEstado = (estado: string, esReservaSistema: boolean) => {
+    // Si es una reserva del sistema, usar un color distintivo
+    if (esReservaSistema) {
+      return '#8B5CF6'; // violeta/púrpura
     }
-  }
+
+    // Si no es del sistema, usar los colores normales según el estado
+    switch (estado) {
+      case 'aprobada':
+        return '#22c55e'; // verde
+      case 'pendiente':
+        return '#f59e0b'; // amarillo
+      case 'rechazada':
+        return '#ef4444'; // rojo
+      case 'cancelada':
+        return '#6b7280'; // gris
+      default:
+        return '#3b82f6'; // azul por defecto
+    }
+  };
+
+  // Función para manejar clics en fechas del calendario
+  const handleDateClick = (info: { date: Date }) => {
+    const fechaSeleccionada = info.date;
+    
+    // Validar que la fecha no sea en el pasado usando la función importada
+    const fechaFormateada = fechaSeleccionada.toISOString().split('T')[0];
+    
+    if (!esFechaValida(fechaFormateada)) {
+      toast({
+        title: "Fecha inválida",
+        description: "No se pueden crear reservas en fechas pasadas",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    console.log(`Fecha seleccionada en calendario: ${fechaFormateada}`);
+    
+    // Aquí se podría implementar lógica adicional como abrir un modal o redirigir
+    // a la página de reservas con la fecha preseleccionada
+  };
+
+  const obtenerEventosCalendario = () => {
+    // Filtrar reservas según criterios seleccionados
+    const reservasFiltradas = reservas.filter(r => {
+      // Filtrar por sala si se ha seleccionado una específica
+      if (salaSeleccionada !== 'todas' && r.sala?.id.toString() !== salaSeleccionada) {
+        return false;
+      }
+      
+      // Filtrar por estado si se ha seleccionado uno específico
+      if (estadoFiltro !== 'todos' && r.estado !== estadoFiltro) {
+        return false;
+      }
+      
+      // Filtrar por usuario si se ha seleccionado uno específico
+      if (usuarioFiltro !== 'todos' && r.usuario?.id !== usuarioFiltro) {
+        return false;
+      }
+      
+      // IMPORTANTE: Aquí no filtramos las reservas canceladas porque queremos mostrarlas
+      // en el calendario para tener un registro visual, pero en las validaciones de conflictos
+      // las reservas canceladas se ignoran
+
+      return true;
+    });
+    
+    // Log para depuración
+    console.log(`Total reservas filtradas para calendario: ${reservasFiltradas.length}`);
+    
+    return reservasFiltradas.map(reserva => {
+      // Normalizar el formato de fecha para asegurar consistencia
+      let fechaEvento: string;
+      
+      if (reserva.fecha.includes('/')) {
+        // Si la fecha viene en formato DD/MM/YYYY
+        const partes = reserva.fecha.split('/');
+        if (partes.length === 3) {
+          fechaEvento = `${partes[2]}-${partes[1]}-${partes[0]}`;
+        } else {
+          console.error(`Formato de fecha incorrecto en reserva ${reserva.id}: ${reserva.fecha}`);
+          fechaEvento = reserva.fecha;
+        }
+      } else {
+        try {
+          // Si ya viene en formato YYYY-MM-DD o similar
+          const fechaObj = new Date(reserva.fecha);
+          
+          // Verificar que la fecha sea válida
+          if (isNaN(fechaObj.getTime())) {
+            console.error(`Fecha inválida en reserva ${reserva.id}: ${reserva.fecha}`);
+            fechaEvento = reserva.fecha;
+          } else {
+            fechaEvento = fechaObj.toISOString().split('T')[0];
+          }
+        } catch (error) {
+          console.error(`Error al procesar la fecha de reserva ${reserva.id}:`, error);
+          fechaEvento = reserva.fecha;
+        }
+      }
+      
+      // Verificar el formato final de la fecha
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaEvento)) {
+        console.warn(`La fecha para la reserva ${reserva.id} sigue siendo incorrecta: ${fechaEvento}`);
+      } else {
+        console.log(`Fecha para reserva ${reserva.id} normalizada: ${fechaEvento} (original: ${reserva.fecha})`);
+      }
+      
+      // Horarios normalizados
+      const horaInicio = reserva.hora_inicio || '00:00:00';
+      const horaFin = reserva.hora_fin || '00:00:00';
+      
+      // Obtener color según el estado
+      const color = getColorPorEstado(reserva.estado, reserva.es_reserva_sistema);
+      
+      // Crear el evento para el calendario
+      return {
+        id: reserva.id.toString(),
+        title: reserva.es_externo ? 
+          (reserva.solicitante_nombre_completo || 'Externo') : 
+          (reserva.usuario?.nombre ? `${reserva.usuario.nombre} ${reserva.usuario.apellido || ''}` : 'Usuario'),
+        start: `${fechaEvento}T${horaInicio}`,
+        end: `${fechaEvento}T${horaFin}`,
+        backgroundColor: color,
+        borderColor: color,
+        textColor: '#ffffff',
+        extendedProps: {
+          sala: reserva.sala?.nombre || 'Sin sala',
+          estado: reserva.estado,
+          esUrgente: reserva.es_urgente,
+          esExterno: reserva.es_externo,
+          esReservaSistema: reserva.es_reserva_sistema,
+          solicitante: reserva.es_externo 
+            ? reserva.solicitante_nombre_completo 
+            : (reserva.usuario?.nombre ? `${reserva.usuario.nombre} ${reserva.usuario.apellido || ''}` : 'Usuario'),
+          institucion: reserva.institucion
+        }
+      };
+    });
+  };
 
   const handleAprobarReserva = async (reservaId: number) => {
     try {
@@ -286,36 +483,62 @@ export default function Home() {
         .from('reservas')
         .update({ estado: 'aprobada' })
         .eq('id', reservaId)
+        .select() // Asegurarse de que la operación devuelva algo si tuvo éxito
 
-      if (error) throw error
+      if (error) {
+        console.error("Error al aprobar reserva:", error)
+        throw error;
+      }
       
-      await fetchReservas()
+      await fetchReservas() // Actualiza la lista/calendario
       toast({
         title: "Reserva aprobada",
-        description: "La reserva ha sido aprobada exitosamente",
+        description: "La reserva ha sido aprobada exitosamente.",
+        variant: "default", // O el estilo por defecto que prefieras
       })
-    } catch (error) {
+      setDetalleAbierto(false) // Cerrar el modal de detalles
+    } catch (error: any) {
+      console.error("Catch - Error al aprobar reserva:", error)
       toast({
-        title: "Error",
-        description: "No se pudo aprobar la reserva",
+        title: "Error al aprobar",
+        description: `No se pudo aprobar la reserva: ${error.message || 'Error desconocido'}`,
         variant: "destructive",
       })
+      // Considera si quieres cerrar el modal también en caso de error
+      // setDetalleAbierto(false) 
     }
   }
 
   const handleRechazarReserva = async (reservaId: number) => {
+    // Validar que el comentario no esté vacío
+    if (!comentarioRechazo || comentarioRechazo.trim() === '') {
+      toast({
+        title: "Error",
+        description: "Por favor, ingresa un motivo para rechazar la reserva.",
+        variant: "destructive",
+      });
+      return; // Detener la ejecución si no hay comentario
+    }
+    
     try {
       const { error } = await supabase
         .from('reservas')
-        .update({ estado: 'rechazada' })
+        .update({ 
+          estado: 'rechazada',
+          comentario: comentarioRechazo || null
+        })
         .eq('id', reservaId)
 
       if (error) throw error
       
       await fetchReservas()
+      setDetalleAbierto(false)
+      setDialogoRechazoAbierto(false)
+      setComentarioRechazo('')
+      
       toast({
         title: "Reserva rechazada",
-        description: "La reserva ha sido rechazada",
+        description: "La reserva ha sido rechazada exitosamente",
       })
     } catch (error) {
       toast({
@@ -594,31 +817,67 @@ export default function Home() {
         <CardHeader className="flex flex-col space-y-4">
           <div className="flex flex-row items-center justify-between">
             <CardTitle>Calendario de Reservas</CardTitle>
-            <div className="flex gap-2">
-              <Button 
-                variant={calendarView === 'timeGridWeek' ? 'default' : 'outline'} 
-                size="sm"
-                onClick={() => {
-                  setCalendarView('timeGridWeek');
-                  if (calendarRef.current) {
-                    calendarRef.current.getApi().changeView('timeGridWeek');
-                  }
-                }}
-              >
-                Semana
-              </Button>
-              <Button 
-                variant={calendarView === 'timeGridDay' ? 'default' : 'outline'} 
-                size="sm"
-                onClick={() => {
-                  setCalendarView('timeGridDay');
-                  if (calendarRef.current) {
-                    calendarRef.current.getApi().changeView('timeGridDay');
-                  }
-                }}
-              >
-                Día
-              </Button>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#22c55e' }}></div>
+                  <span>Aprobada</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#f59e0b' }}></div>
+                  <span>Pendiente</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#ef4444' }}></div>
+                  <span>Rechazada</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#8B5CF6' }}></div>
+                  <span>Sistema</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#6b7280' }}></div>
+                  <span>Cancelada</span>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button 
+                  variant={calendarView === 'timeGridWeek' ? 'default' : 'outline'} 
+                  size="sm"
+                  onClick={() => {
+                    setCalendarView('timeGridWeek');
+                    if (calendarRef.current) {
+                      calendarRef.current.getApi().changeView('timeGridWeek');
+                    }
+                  }}
+                >
+                  Semana
+                </Button>
+                <Button 
+                  variant={calendarView === 'timeGridDay' ? 'default' : 'outline'} 
+                  size="sm"
+                  onClick={() => {
+                    setCalendarView('timeGridDay');
+                    if (calendarRef.current) {
+                      calendarRef.current.getApi().changeView('timeGridDay');
+                    }
+                  }}
+                >
+                  Día
+                </Button>
+                <Button 
+                  variant={calendarView === 'dayGridMonth' ? 'default' : 'outline'} 
+                  size="sm"
+                  onClick={() => {
+                    setCalendarView('dayGridMonth');
+                    if (calendarRef.current) {
+                      calendarRef.current.getApi().changeView('dayGridMonth');
+                    }
+                  }}
+                >
+                  Mes
+                </Button>
+              </div>
             </div>
           </div>
           
@@ -666,28 +925,13 @@ export default function Home() {
                 </SelectContent>
               </Select>
             </div>
-            
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                <span className="text-xs">Aprobada</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-full bg-amber-500"></div>
-                <span className="text-xs">Pendiente</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                <span className="text-xs">Rechazada</span>
-              </div>
-            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">
           <div className="h-[600px] calendar-container">
             <FullCalendar
               ref={calendarRef}
-              plugins={[timeGridPlugin, interactionPlugin]}
+              plugins={[timeGridPlugin, interactionPlugin, dayGridPlugin]}
               initialView="timeGridWeek"
               locale={esLocale}
               slotMinTime="08:00:00"
@@ -698,28 +942,61 @@ export default function Home() {
                 center: 'title',
                 right: '' // Quitamos los botones de vista ya que los manejamos con nuestros propios botones
               }}
-              hiddenDays={[0]} // Ocultar domingo (0 = domingo, 1 = lunes, etc.)
-              events={obtenerEventosCalendario().filter(evento => {
-                // Filtrar por estado si es necesario
-                if (estadoFiltro !== 'todos' && evento.extendedProps.estado !== estadoFiltro) {
-                  return false;
-                }
-                
-                // Filtrar por usuario si es necesario
-                if (usuarioFiltro !== 'todos' && evento.extendedProps.usuario === usuarioFiltro) {
-                  return false;
-                }
-                
-                return true;
-              })}
+              events={obtenerEventosCalendario()}
               eventClick={(info) => {
-                setReservaSeleccionada(info.event.extendedProps.reservaCompleta);
-                setDetalleAbierto(true);
+                // Buscar la reserva completa basada en el ID del evento
+                const reservaId = Number(info.event.id);
+                const reservaCompleta = reservas.find(r => r.id === reservaId);
+                
+                if (reservaCompleta) {
+                  console.log('Evento seleccionado:', {
+                    id: reservaCompleta.id,
+                    fecha: reservaCompleta.fecha,
+                    sala: reservaCompleta.sala?.nombre,
+                    solicitante: info.event.extendedProps.solicitante
+                  });
+                  
+                  setReservaSeleccionada(reservaCompleta);
+                  setDetalleAbierto(true);
+                } else {
+                  console.error(`No se encontró la reserva con ID ${reservaId}`);
+                  toast({
+                    title: "Error",
+                    description: "No se pudo cargar los detalles de la reserva",
+                    variant: "destructive",
+                  });
+                }
               }}
+              dateClick={handleDateClick}
               eventContent={(eventInfo) => (
-                <div className="p-1 text-xs cursor-pointer overflow-hidden">
+                // Aplicar el color de fondo y texto al div principal
+                <div 
+                  className="p-1 text-xs cursor-pointer overflow-hidden h-full" 
+                  style={{ 
+                    backgroundColor: eventInfo.backgroundColor, 
+                    color: eventInfo.textColor, // Usar el color de texto definido en el evento
+                    borderColor: eventInfo.borderColor, // Opcional: mantener el borde si se desea
+                    borderWidth: '1px', // Opcional: añadir borde para mejor separación
+                    borderRadius: '3px' // Opcional: redondear esquinas
+                  }}
+                >
+                  {/* Ya no necesitamos el punto coloreado */}
+                  {/* <span 
+                    className="w-2 h-2 rounded-full inline-block mt-[3px] flex-shrink-0" 
+                    style={{ backgroundColor: eventInfo.backgroundColor }}
+                  ></span> */}
+                  <div className="flex-grow min-w-0"> {/* Contenedor para el texto */}
                   <div className="font-bold truncate">{eventInfo.event.title}</div>
-                  <div className="truncate capitalize">{eventInfo.event.extendedProps.estado}</div>
+                  <div className="truncate">
+                    <span className="capitalize">{eventInfo.event.extendedProps.estado}</span>
+                    {eventInfo.event.extendedProps.esUrgente && (
+                        <span className="ml-1 px-1 py-0.5 bg-white/30 text-white rounded-sm text-[9px]"> {/* Ajustar estilo badge */}
+                        Urgente
+                      </span>
+                    )}
+                  </div>
+                  <div className="truncate text-[10px]">{eventInfo.event.extendedProps.sala}</div>
+                  </div>
                 </div>
               )}
               nowIndicator={true}
@@ -733,71 +1010,133 @@ export default function Home() {
         </CardContent>
       </Card>
 
-      {/* Dialog para mostrar detalles de la reserva */}
+      {/* Modal de detalle de reserva */}
       <Dialog open={detalleAbierto} onOpenChange={setDetalleAbierto}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-[525px]">
           <DialogHeader>
-            <DialogTitle>Detalles de la reserva</DialogTitle>
+            <DialogTitle>Detalle de Reserva</DialogTitle>
+            <DialogDescription>
+              Información detallada de la reserva seleccionada.
+            </DialogDescription>
           </DialogHeader>
+          
           {reservaSeleccionada && (
-            <div className="space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <p className="text-sm font-medium">Sala:</p>
-                  <p className="text-sm">{reservaSeleccionada.sala?.nombre}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Estado:</p>
-                  <p className={`text-sm capitalize ${
-                    reservaSeleccionada.estado === 'aprobada' ? 'text-green-600' : 
-                    reservaSeleccionada.estado === 'pendiente' ? 'text-amber-600' : 
-                    reservaSeleccionada.estado === 'rechazada' ? 'text-red-600' : 'text-gray-600'
-                  }`}>{reservaSeleccionada.estado}</p>
-                </div>
-              </div>
+            <div className="grid gap-6 py-4">
+              <div className="grid grid-cols-[auto_1fr] items-start gap-4">
+                <span className="text-muted-foreground flex items-center gap-2">
+                  <User className="h-4 w-4" />
+                  Solicitante:
+                </span>
               <div>
-                <p className="text-sm font-medium">Usuario:</p>
-                <p className="text-sm">{reservaSeleccionada.usuario?.nombre} {reservaSeleccionada.usuario?.apellido}</p>
+                  <p className="font-medium">{reservaSeleccionada.es_externo 
+                  ? reservaSeleccionada.solicitante_nombre_completo 
+                    : `${reservaSeleccionada.usuario?.nombre} ${reservaSeleccionada.usuario?.apellido}`}</p>
+                <p className="text-sm text-muted-foreground">
+                  {reservaSeleccionada.es_externo 
+                    ? reservaSeleccionada.institucion 
+                    : reservaSeleccionada.usuario?.rol}
+                </p>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <p className="text-sm font-medium">Fecha:</p>
-                  <p className="text-sm">{new Date(reservaSeleccionada.fecha).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Hora:</p>
-                  <p className="text-sm">{reservaSeleccionada.hora_inicio.substring(0, 5)} - {reservaSeleccionada.hora_fin.substring(0, 5)}</p>
+              
+                <span className="text-muted-foreground flex items-center gap-2">
+                   <Building className="h-4 w-4" />
+                   Sala:
+                </span>
+                <p className="font-medium">{reservaSeleccionada.sala?.nombre}</p>
+
+                <span className="text-muted-foreground flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Fecha y Hora:
+                </span>
+              <div>
+                  <p className="font-medium">{new Date(reservaSeleccionada.fecha + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
+                <p className="text-sm text-muted-foreground">
+                  {reservaSeleccionada.hora_inicio?.slice(0, 5)} - {reservaSeleccionada.hora_fin?.slice(0, 5)}
+                </p>
                 </div>
               </div>
+              
+              {reservaSeleccionada.comentario && (
+                 <div className="grid grid-cols-[auto_1fr] items-start gap-4 border-t pt-4">
+                    <span className="text-muted-foreground flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4" />
+                      Comentario:
+                    </span>
+                  <p className="text-sm">{reservaSeleccionada.comentario}</p>
+                </div>
+              )}
+              
+              <div className={`grid grid-cols-[auto_1fr] items-center gap-4 ${!reservaSeleccionada.comentario ? 'border-t pt-4' : ''}`}>
+                <span className="text-muted-foreground flex items-center gap-2">
+                  <Tag className="h-4 w-4" />
+                  Estado:
+                </span>
+              <div>
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                  reservaSeleccionada.estado === 'pendiente' ? 'bg-yellow-100 text-yellow-800' :
+                  reservaSeleccionada.estado === 'aprobada' ? 'bg-green-100 text-green-800' :
+                  reservaSeleccionada.estado === 'rechazada' ? 'bg-red-100 text-red-800' :
+                    reservaSeleccionada.estado === 'cancelada' ? 'bg-gray-100 text-gray-800' :
+                  'bg-gray-100 text-gray-800'
+                }`}>
+                  {reservaSeleccionada.estado.charAt(0).toUpperCase() + reservaSeleccionada.estado.slice(1)}
+                  </span>
+                </div>
+              </div>
+              
               {reservaSeleccionada.estado === 'pendiente' && (
-                <div className="flex justify-end gap-2 mt-4">
+                <DialogFooter className="pt-4 border-t">
                   <Button
-                    size="sm"
-                    variant="default"
+                    variant="outline"
                     onClick={() => {
-                      handleAprobarReserva(reservaSeleccionada.id);
-                      setDetalleAbierto(false);
-                    }}
-                  >
-                    Aprobar
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => {
-                      handleRechazarReserva(reservaSeleccionada.id);
-                      setDetalleAbierto(false);
+                      setDialogoRechazoAbierto(true)
                     }}
                   >
                     Rechazar
                   </Button>
-                </div>
+                  <Button
+                    onClick={() => handleAprobarReserva(reservaSeleccionada.id)}
+                  >
+                    Aprobar
+                  </Button>
+                </DialogFooter>
               )}
             </div>
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Diálogo para rechazar con comentario */}
+      <Dialog open={dialogoRechazoAbierto} onOpenChange={setDialogoRechazoAbierto}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rechazar Reserva</DialogTitle>
+            <DialogDescription>
+              Por favor, proporciona un motivo para el rechazo de esta reserva.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            placeholder="Motivo del rechazo"
+            value={comentarioRechazo}
+            onChange={(e) => setComentarioRechazo(e.target.value)}
+            className="min-h-[100px]"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogoRechazoAbierto(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={() => handleRechazarReserva(reservaSeleccionada?.id)}
+              disabled={!comentarioRechazo || comentarioRechazo.trim() === ''}
+            >
+              Rechazar Reserva
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
+
 

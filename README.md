@@ -1,3 +1,7 @@
+# Sistema de Reserva de Salas
+
+Repositorio temporal para pruebas de carga a GitHub.
+
 # Sistema de Reserva de Salas - Facultad de Psicología
 
 Este proyecto es un sistema de gestión y reserva de salas para la Facultad de Psicología, desarrollado con Next.js, Tailwind CSS y Supabase.

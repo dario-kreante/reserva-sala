@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { useUser } from '@/hooks/useUser'
-import { Home, Calendar, Users, BookOpen, Clock, CheckSquare } from 'lucide-react'
+import { Home, Calendar, Users, BookOpen, Clock, CheckSquare, Settings } from 'lucide-react'
 
 interface SidebarProps {
   className?: string;
@@ -20,6 +20,7 @@ const Sidebar = ({ className = "" }: SidebarProps) => {
     ...adminLinks,
     { href: "/gestion-salas", icon: BookOpen, text: "Gestión de Salas" },
     { href: "/usuarios", icon: Users, text: "Gestión de Usuarios" },
+    { href: "/configuracion", icon: Settings, text: "Configuración" },
   ]
 
   const userLinks = [

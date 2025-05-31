@@ -55,8 +55,8 @@ export function useResponsableSalas() {
           
           // Transformar los datos para obtener un array de salas
           const salas = salasData?.map(item => ({
-            id: item.salas.id,
-            nombre: item.salas.nombre
+            id: item.salas[0].id,
+            nombre: item.salas[0].nombre
           })) || []
           
           setSalasResponsable(salas)

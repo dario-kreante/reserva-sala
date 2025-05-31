@@ -1,23 +1,48 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { format, isValid } from 'date-fns'
+import { es } from 'date-fns/locale'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogClose
+} from "@/components/ui/dialog"
+import { Calendar } from "@/components/ui/calendar"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Switch } from "@/components/ui/switch"
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { toast } from "@/components/ui/use-toast"
+import { Switch } from "@/components/ui/switch"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { useToast } from "@/components/ui/use-toast"
+import { Badge } from "@/components/ui/badge"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Calendar as CalendarIcon, Info, AlertTriangle, Check } from "lucide-react"
 import { useUser } from '@/hooks/useUser'
 import { supabase } from '@/lib/supabase'
-import { Calendar } from "@/components/ui/calendar"
 import { useReservasData } from '@/hooks/useReservasData'
-import { format } from 'date-fns'
-import { es } from 'date-fns/locale'
 import { useUserReservas } from '@/hooks/useUserReservas'
 import { DisponibilidadModal } from "@/components/ui/disponibilidad-modal"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+
+// Importar las funciones de validación
+import { validarReserva, validarHorarioConsistente, hayConflictoHorario } from '../utils/horarioValidation'
 
 interface HorarioOcupado {
   hora_inicio: string;
@@ -46,6 +71,7 @@ interface ReservaResponse {
 export default function MisReservas() {
   const { reservas, loading, error, fetchUserReservas: fetchReservas } = useUserReservas()
   const { fetchHorariosOcupados, horariosOcupados, salas, loadingSalas } = useReservasData()
+  const { toast } = useToast()
   const [nuevaReserva, setNuevaReserva] = useState<NuevaReserva>({
     sala: null,
     fecha: '',
@@ -61,9 +87,47 @@ export default function MisReservas() {
   })
   const [selectedSala, setSelectedSala] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState<Date>()
+  const [fechaInput, setFechaInput] = useState<string>('')
   const { user } = useUser()
   const [conflictoHorario, setConflictoHorario] = useState<boolean>(false)
   const [mensajeConflicto, setMensajeConflicto] = useState<string>('')
+  const [mostrarAlertaExito, setMostrarAlertaExito] = useState(false)
+  const [mensajeExito, setMensajeExito] = useState('')
+
+  // Referencia para evitar la doble consulta en el primer renderizado
+  const prevSelectedDate = useRef<string | null>(null);
+  const prevSelectedSala = useRef<string | null>(null);
+  
+  // Creamos una función memoizada para fetchHorariosOcupados
+  const fetchOcupados = useCallback(
+    async (salaId: number, fechaStr: string, caller: string) => {
+      console.log(`Consultando horarios ocupados: sala=${salaId}, fecha=${fechaStr}, origen=${caller}`);
+      return fetchHorariosOcupados(salaId, fechaStr, caller);
+    },
+    [fetchHorariosOcupados]
+  );
+  
+  // Modificamos el useEffect principal para usar el nuevo parámetro caller
+  useEffect(() => {
+    if (selectedSala && selectedDate) {
+      const formattedDate = format(selectedDate, 'yyyy-MM-dd');
+      
+      // Verificar si es la misma consulta que ya hicimos
+      const currentKey = `${selectedSala}-${formattedDate}`;
+      const previousKey = `${prevSelectedSala.current}-${prevSelectedDate.current}`;
+      
+      if (currentKey !== previousKey) {
+        console.log(`Llamando a fetchHorariosOcupados desde useEffect con salaId=${selectedSala} y fecha=${formattedDate}`);
+        
+        // Actualizamos las referencias para la próxima verificación
+        prevSelectedSala.current = selectedSala;
+        prevSelectedDate.current = formattedDate;
+        
+        // Realizamos la consulta
+        fetchOcupados(Number(selectedSala), formattedDate, 'useEffect-principal');
+      }
+    }
+  }, [selectedSala, selectedDate, fetchOcupados]);
 
   useEffect(() => {
     if (error) {
@@ -76,79 +140,167 @@ export default function MisReservas() {
   }, [error])
 
   useEffect(() => {
-    if (selectedSala && selectedDate) {
-      const formattedDate = format(selectedDate, 'yyyy-MM-dd')
-      fetchHorariosOcupados(Number(selectedSala), formattedDate)
-    }
-  }, [selectedSala, selectedDate])
+    // Configurar suscripción en tiempo real para las reservas del usuario actual
+    if (user && user.id) {
+      console.log('Configurando suscripción en tiempo real para mis reservas...')
+      
+      // Suscribirse a las reservas del usuario actual
+      const misReservasSubscription = supabase
+        .channel('mis-reservas')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'reservas',
+            filter: `usuario_id=eq.${user.id}`,
+          },
+          (payload) => {
+            console.log('Cambio en mis reservas detectado:', payload)
+            fetchReservas()
+          }
+        )
+        .subscribe()
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target
-    setNuevaReserva(prev => ({ ...prev, [name]: value }))
-    
-    if (name === 'fecha' && nuevaReserva.sala) {
-      fetchHorariosOcupados(Number(nuevaReserva.sala), value)
-      // Resetear el estado de conflicto al cambiar la fecha
-      setConflictoHorario(false)
-      setMensajeConflicto('')
-    }
-    
-    // Validar superposición de horarios cuando cambian las horas
-    if ((name === 'horaInicio' || name === 'horaFin') && 
-        nuevaReserva.sala && 
-        nuevaReserva.fecha && 
-        nuevaReserva.horaInicio && 
-        nuevaReserva.horaFin) {
-      
-      const horaInicio = name === 'horaInicio' ? value : nuevaReserva.horaInicio
-      const horaFin = name === 'horaFin' ? value : nuevaReserva.horaFin
-      
-      // Validar que la hora de fin sea posterior a la de inicio
-      const inicio = new Date(`2000-01-01T${horaInicio}`)
-      const fin = new Date(`2000-01-01T${horaFin}`)
-      
-      if (fin <= inicio) {
-        setConflictoHorario(true)
-        setMensajeConflicto('La hora de fin debe ser posterior a la hora de inicio')
-        return
+      // Limpiar la suscripción al desmontar
+      return () => {
+        console.log('Limpiando suscripción de mis reservas')
+        supabase.removeChannel(misReservasSubscription)
       }
+    }
+  }, [user])
+
+  // Agregar un efecto para validar los horarios cuando cambien
+  useEffect(() => {
+    // Solo validar si tenemos todos los datos necesarios
+    if (nuevaReserva.sala && nuevaReserva.fecha && nuevaReserva.horaInicio && nuevaReserva.horaFin) {
+      console.log('Validando horarios en tiempo real...');
       
-      // Validar superposición con horarios ocupados
-      let hayConflicto = false
-      let horarioConflicto = ''
+      // Obtener la fecha y hora actual en Chile
+      const fechaHoraChile = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Santiago' }));
       
-      for (const horario of horariosOcupados) {
-        const horarioInicio = new Date(`2000-01-01T${horario.hora_inicio}`)
-        const horarioFin = new Date(`2000-01-01T${horario.hora_fin}`)
+      // Crear fecha seleccionada con la hora actual
+      const [year, month, day] = nuevaReserva.fecha.split('-').map(Number);
+      const fechaSeleccionada = new Date(year, month - 1, day);
+      
+      // Si es el mismo día, validar que la hora no haya pasado
+      if (fechaSeleccionada.getDate() === fechaHoraChile.getDate() &&
+          fechaSeleccionada.getMonth() === fechaHoraChile.getMonth() &&
+          fechaSeleccionada.getFullYear() === fechaHoraChile.getFullYear()) {
         
-        if ((inicio >= horarioInicio && inicio < horarioFin) ||
-            (fin > horarioInicio && fin <= horarioFin) ||
-            (inicio <= horarioInicio && fin >= horarioFin)) {
-          hayConflicto = true
-          horarioConflicto = `${horario.hora_inicio} - ${horario.hora_fin}`
-          break
+        const [horaInicio, minutoInicio] = nuevaReserva.horaInicio.split(':').map(Number);
+        const horaInicioDate = new Date(year, month - 1, day, horaInicio, minutoInicio);
+        
+        if (horaInicioDate < fechaHoraChile) {
+          setConflictoHorario(true);
+          setMensajeConflicto('No se pueden realizar reservas en horarios pasados');
+          return;
         }
       }
       
-      if (hayConflicto) {
-        setConflictoHorario(true)
-        setMensajeConflicto(`El horario seleccionado se superpone con una reserva existente (${horarioConflicto})`)
-      } else {
-        setConflictoHorario(false)
-        setMensajeConflicto('')
+      // Validar si la fecha es pasada (días anteriores)
+      fechaHoraChile.setHours(0, 0, 0, 0);
+      fechaSeleccionada.setHours(0, 0, 0, 0);
+      
+      if (fechaSeleccionada < fechaHoraChile) {
+        setConflictoHorario(true);
+        setMensajeConflicto('No se pueden realizar reservas en fechas pasadas');
+        return;
+      }
+
+      // Validar que la hora de fin sea posterior a la de inicio
+      if (!validarHorarioConsistente(nuevaReserva.horaInicio, nuevaReserva.horaFin)) {
+        setConflictoHorario(true);
+        setMensajeConflicto('La hora de fin debe ser posterior a la hora de inicio');
+        return;
+      }
+      
+      // Si la fecha es válida y tenemos horarios ocupados, validar conflictos
+      if (horariosOcupados.length > 0) {
+        // Validar con la función compartida
+        const resultadoValidacion = validarReserva(
+          nuevaReserva.fecha,
+          nuevaReserva.horaInicio,
+          nuevaReserva.horaFin,
+          horariosOcupados
+        );
+        
+        if (!resultadoValidacion.esValida) {
+          setConflictoHorario(true);
+          setMensajeConflicto(resultadoValidacion.mensaje || 'Existe un conflicto con el horario seleccionado');
+        } else {
+          setConflictoHorario(false);
+          setMensajeConflicto('');
+        }
       }
     }
-  }
+  }, [nuevaReserva.fecha, nuevaReserva.horaInicio, nuevaReserva.horaFin, horariosOcupados]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    
+    // Si es el campo de fecha en formato DD/MM/YYYY
+    if (name === 'fecha' && value.includes('/')) {
+      setFechaInput(value);
+      
+      const [day, month, year] = value.split('/').map(Number);
+      if (day && month && year) {
+        try {
+          const newDate = new Date(year, month - 1, day);
+          if (isValid(newDate)) {
+            // Validar que la fecha no sea en el pasado
+            const hoy = new Date();
+            hoy.setHours(0, 0, 0, 0);
+            
+            if (newDate < hoy) {
+              console.log('La fecha ingresada está en el pasado', newDate);
+              toast({
+                title: 'Fecha inválida',
+                description: 'No se pueden realizar reservas en fechas pasadas',
+                variant: 'destructive',
+              });
+              return;
+            }
+            
+            setSelectedDate(newDate);
+            setNuevaReserva(prev => ({
+              ...prev,
+              fecha: format(newDate, 'yyyy-MM-dd'),
+            }));
+            
+            // Si tenemos sala seleccionada, consultamos ocupados
+            if (selectedSala) {
+              const dateStr = format(newDate, 'yyyy-MM-dd');
+              fetchOcupados(Number(selectedSala), dateStr, 'handleInputChange');
+            }
+          }
+        } catch (error) {
+          console.error("Error al procesar la fecha:", error);
+        }
+      }
+    } else {
+      // Para cualquier otro campo, simplemente actualizar el estado
+      setNuevaReserva(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
+  };
 
   const handleSelectChange = (value: string) => {
-    setNuevaReserva(prev => ({ ...prev, sala: value }))
-    if (nuevaReserva.fecha) {
-      fetchHorariosOcupados(Number(value), nuevaReserva.fecha)
-      // Resetear el estado de conflicto al cambiar la sala
-      setConflictoHorario(false)
-      setMensajeConflicto('')
+    setSelectedSala(value);
+    setNuevaReserva(prev => ({ ...prev, sala: value }));
+    
+    // Resetear el estado de conflicto al cambiar la sala
+    setConflictoHorario(false);
+    setMensajeConflicto('');
+    
+    if (value && selectedDate) {
+      const dateStr = format(selectedDate, 'yyyy-MM-dd');
+      // Llamamos a fetchOcupados con el origen identificado
+      fetchOcupados(Number(value), dateStr, 'handleSelectChange');
     }
-  }
+  };
 
   const handleCheckboxChange = (checked: boolean) => {
     setNuevaReserva(prev => ({ ...prev, esUrgente: checked }))
@@ -158,111 +310,203 @@ export default function MisReservas() {
     setNuevaReserva(prev => ({ ...prev, esExterno: checked }))
   }
 
-  const handleDisponibilidadDateSelect = (date: Date) => {
-    setSelectedDate(date)
-    setNuevaReserva(prev => ({ 
-      ...prev, 
-      fecha: format(date, 'yyyy-MM-dd') 
-    }))
+  const handleDisponibilidadDateSelect = (date: Date | undefined) => {
+    if (!date) {
+      console.log('No se seleccionó fecha');
+      return;
+    }
+
+    // Validar que la fecha no sea en el pasado
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
     
-    if (nuevaReserva.sala) {
-      fetchHorariosOcupados(Number(nuevaReserva.sala), format(date, 'yyyy-MM-dd'))
-    }
-  }
-
-  const validateReservation = () => {
-    if (!nuevaReserva.horaInicio || !nuevaReserva.horaFin) return false
-
-    const inicio = new Date(`2000-01-01T${nuevaReserva.horaInicio}`)
-    const fin = new Date(`2000-01-01T${nuevaReserva.horaFin}`)
-
-    if (fin <= inicio) {
+    if (date < hoy) {
+      console.log('La fecha seleccionada está en el pasado', date);
       toast({
-        title: "Error",
-        description: "La hora de fin debe ser posterior a la hora de inicio",
-        variant: "destructive",
-      })
-      return false
+        title: 'Fecha inválida',
+        description: 'No se pueden realizar reservas en fechas pasadas',
+        variant: 'destructive',
+      });
+      return;
     }
 
-    for (const horario of horariosOcupados) {
-      const horarioInicio = new Date(`2000-01-01T${horario.hora_inicio}`)
-      const horarioFin = new Date(`2000-01-01T${horario.hora_fin}`)
-
-      if ((inicio >= horarioInicio && inicio < horarioFin) ||
-          (fin > horarioInicio && fin <= horarioFin) ||
-          (inicio <= horarioInicio && fin >= horarioFin)) {
-        toast({
-          title: "Error",
-          description: `El horario seleccionado se superpone con una reserva existente (${horario.hora_inicio} - ${horario.hora_fin})`,
-          variant: "destructive"
-        })
-        return false
-      }
+    // Eliminar mensajes anteriores sobre fechas pasadas
+    if (mensajeConflicto === 'No se pueden realizar reservas en fechas pasadas') {
+      setMensajeConflicto('');
+      setConflictoHorario(false);
     }
 
-    return true
-  }
+    // Formatear fecha como YYYY-MM-DD para la base de datos
+    const fechaFormateada = format(date, 'yyyy-MM-dd');
+    console.log('Fecha seleccionada formateada:', fechaFormateada);
+
+    // Actualizar el estado y la fecha seleccionada en el calendario
+    setSelectedDate(date);
+    setFechaInput(format(date, 'dd/MM/yyyy'));
+    setNuevaReserva(prev => ({
+      ...prev,
+      fecha: fechaFormateada,
+    }));
+    
+    // Si tenemos sala seleccionada, consultamos ocupados
+    if (selectedSala) {
+      // Llamamos a fetchOcupados con el origen identificado
+      fetchOcupados(Number(selectedSala), fechaFormateada, 'handleDisponibilidadDateSelect');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    console.log('Iniciando creación de reserva...')
     
-    // Validar campos requeridos
-    if (!nuevaReserva.sala || !nuevaReserva.fecha || !nuevaReserva.horaInicio || !nuevaReserva.horaFin) {
-      toast({
-        title: "Error",
-        description: "Todos los campos son requeridos",
-        variant: "destructive",
-      })
-      return
-    }
-
-    // Validar campos adicionales para reserva externa
-    if (nuevaReserva.esExterno) {
-      if (!nuevaReserva.solicitanteNombreCompleto || !nuevaReserva.institucion || !nuevaReserva.mailExternos) {
+    try {
+      // Verificar el comentario primero, antes que otros campos
+      if (!nuevaReserva.comentario?.trim()) {
+        console.log('Falta el comentario:', nuevaReserva)
         toast({
-          title: "Error",
-          description: "Para reservas externas, el nombre completo, institución y email son obligatorios",
+          title: "Campo requerido",
+          description: "El comentario es obligatorio. Por favor, indica el motivo o detalles de la reserva.",
           variant: "destructive",
         })
         return
       }
-    }
 
-    // Validar superposición de horarios
-    if (!validateReservation()) {
-      return // validateReservation ya muestra el toast de error
-    }
+      // Verificar otros campos obligatorios
+      if (!nuevaReserva.sala || !nuevaReserva.fecha || !nuevaReserva.horaInicio || !nuevaReserva.horaFin) {
+        console.log('Faltan campos obligatorios:', nuevaReserva)
+        toast({
+          title: "Error",
+          description: "Debes completar todos los campos obligatorios",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      if (!user && !nuevaReserva.esExterno) {
+        toast({
+          title: "Error",
+          description: "Debes iniciar sesión para realizar una reserva interna",
+          variant: "destructive",
+        })
+        return;
+      }
+      
+      if (nuevaReserva.esExterno && (!nuevaReserva.solicitanteNombreCompleto || !nuevaReserva.institucion || !nuevaReserva.mailExternos || !nuevaReserva.telefono)) {
+        toast({
+          title: "Error",
+          description: "Para reservas externas, debes completar todos los datos del solicitante",
+          variant: "destructive",
+        })
+        return;
+      }
+      
+      if (conflictoHorario) {
+        toast({
+          title: "Error",
+          description: mensajeConflicto || "Existe un conflicto con el horario seleccionado",
+          variant: "destructive",
+        })
+        return;
+      }
+      
+      // Antes de enviar, vamos a obtener los horarios ocupados actualizados
+      if (selectedDate) {
+        const fechaStr = format(selectedDate, 'yyyy-MM-dd');
+        await fetchOcupados(Number(selectedSala), fechaStr, 'handleSubmit-preValidacion');
+      }
+      
+      console.log('Preparando envío de la reserva...');
+      
+      // Validamos la reserva usando los horarios ocupados actuales
+      console.log(`Validando reserva con ${horariosOcupados.length} horarios ocupados`);
+      
+      const horarios = horariosOcupados.map(h => ({
+        hora_inicio: h.hora_inicio,
+        hora_fin: h.hora_fin
+      }));
+      
+      const resultadoValidacion = validarReserva(
+        nuevaReserva.fecha,
+        nuevaReserva.horaInicio,
+        nuevaReserva.horaFin,
+        horarios
+      );
+      
+      if (!resultadoValidacion.esValida) {
+        toast({
+          title: "Error de validación",
+          description: resultadoValidacion.mensaje,
+          variant: "destructive",
+        });
+        
+        if (resultadoValidacion.tipo === 'conflicto_horario') {
+          setConflictoHorario(true);
+          setMensajeConflicto(resultadoValidacion.mensaje || 'Hay un conflicto de horario');
+        }
+        
+        return;
+      }
 
-    try {
+      // Si es una reserva externa, validar datos adicionales
+      if (nuevaReserva.esExterno && !nuevaReserva.institucion) {
+        toast({
+          title: "Error",
+          description: "Para reservas externas, la institución es requerida",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      // Preparar datos para enviar a la API
       const reservaData = {
-        sala_id: parseInt(nuevaReserva.sala),
-        usuario_id: user?.id,
+        sala_id: Number(nuevaReserva.sala),
         fecha: nuevaReserva.fecha,
         hora_inicio: nuevaReserva.horaInicio,
         hora_fin: nuevaReserva.horaFin,
+        estado: 'pendiente',
         es_urgente: nuevaReserva.esUrgente,
-        estado: 'pendiente', // Estado inicial siempre pendiente
+        comentario: nuevaReserva.comentario || '',
         es_externo: nuevaReserva.esExterno,
-        solicitante_nombre_completo: nuevaReserva.esExterno ? nuevaReserva.solicitanteNombreCompleto : null,
-        institucion: nuevaReserva.esExterno ? nuevaReserva.institucion : null,
-        mail_externos: nuevaReserva.esExterno ? nuevaReserva.mailExternos : null,
-        telefono: nuevaReserva.esExterno ? nuevaReserva.telefono : null,
-        comentario: nuevaReserva.comentario || null
       }
 
-      const { error } = await supabase
+      // Añadir campos adicionales si es una reserva externa
+      if (nuevaReserva.esExterno) {
+        Object.assign(reservaData, {
+          solicitante_nombre_completo: nuevaReserva.solicitanteNombreCompleto,
+          institucion: nuevaReserva.institucion,
+          mail_externos: nuevaReserva.mailExternos,
+          telefono: nuevaReserva.telefono
+        })
+      } else {
+        // Si no es externa, asegurarse de que usuario_id esté establecido
+        if (user?.id) {
+          Object.assign(reservaData, {
+            usuario_id: user.id
+          })
+        } else {
+          toast({
+            title: "Error",
+            description: "No se pudo determinar el usuario actual",
+            variant: "destructive",
+          })
+          return
+        }
+      }
+
+      // Insertar la nueva reserva
+      const { data, error } = await supabase
         .from('reservas')
         .insert(reservaData)
+        .select()
 
-      if (error) throw error
+      if (error) throw new Error(error.message)
 
-      toast({
-        title: "Reserva enviada",
-        description: "Tu reserva ha sido creada y está pendiente de aprobación",
-      })
-
-      // Resetear el formulario
+      // Limpiar formulario y mostrar mensaje de éxito
+      const nuevaReservaCreada = data[0]
+      
+      setMensajeExito(`Tu reserva ha sido creada exitosamente y está en estado ${nuevaReservaCreada.estado}.`)
+      setMostrarAlertaExito(true)
+      
       setNuevaReserva({
         sala: null,
         fecha: '',
@@ -276,14 +520,11 @@ export default function MisReservas() {
         telefono: '',
         comentario: ''
       })
-
-      // Actualizar las listas
+      
+      // Refrescar la lista de reservas
       fetchReservas()
-      if (selectedSala && selectedDate) {
-        fetchHorariosOcupados(Number(selectedSala), format(selectedDate, 'yyyy-MM-dd'))
-      }
     } catch (error) {
-      console.error('Error al crear la reserva:', error)
+      console.error('Error:', error)
       toast({
         title: "Error",
         description: "No se pudo crear la reserva. Por favor, intenta nuevamente.",
@@ -320,6 +561,16 @@ export default function MisReservas() {
   return (
     <div className="container mx-auto p-6">
       <h1 className="text-2xl font-bold mb-6">Mis Reservas</h1>
+      
+      {mostrarAlertaExito && (
+        <Alert className="mb-6 bg-green-50 border-green-500 text-green-700">
+          <Check className="h-4 w-4 text-green-600" />
+          <AlertTitle className="text-green-700 font-semibold">Reserva Exitosa</AlertTitle>
+          <AlertDescription className="text-green-700">
+            {mensajeExito}
+          </AlertDescription>
+        </Alert>
+      )}
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
@@ -480,7 +731,14 @@ export default function MisReservas() {
               </div>
               <div>
                 <Label htmlFor="fecha">Fecha</Label>
-                <Input id="fecha" name="fecha" type="date" value={nuevaReserva.fecha} onChange={handleInputChange} />
+                <Input 
+                  id="fecha" 
+                  name="fecha" 
+                  type="date" 
+                  value={nuevaReserva.fecha} 
+                  onChange={handleInputChange}
+                  min={new Date().toISOString().split('T')[0]}
+                />
               </div>
               {nuevaReserva.sala && nuevaReserva.fecha && (
                 <div className="rounded-lg border border-border p-4 bg-background">
@@ -489,20 +747,31 @@ export default function MisReservas() {
                     <Label className="font-medium">Horarios Ocupados</Label>
                   </div>
                   {horariosOcupados.length > 0 ? (
-                    <ul className="space-y-2">
-                      {horariosOcupados.map((horario, index) => (
-                        <li 
-                          key={index} 
-                          className="flex items-center gap-2 px-3 py-2 rounded-md bg-red-50 border border-red-100 text-red-700"
-                        >
-                          <div className="flex-1">
-                            <span className="font-medium">{horario.hora_inicio}</span>
-                            <span className="mx-2">-</span>
-                            <span className="font-medium">{horario.hora_fin}</span>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
+                    <>
+                      <Alert className="mb-3 bg-amber-50 border-amber-200 text-amber-800">
+                        <AlertTriangle className="h-4 w-4 text-amber-600" />
+                        <AlertTitle className="text-amber-800">Atención</AlertTitle>
+                        <AlertDescription className="text-amber-700">
+                          No podrá reservar en los horarios que se superponen con los ya ocupados.
+                          Por favor, seleccione un horario disponible.
+                        </AlertDescription>
+                      </Alert>
+                      
+                      <ul className="space-y-2">
+                        {horariosOcupados.map((horario, index) => (
+                          <li 
+                            key={index} 
+                            className="flex items-center gap-2 px-3 py-2 rounded-md bg-red-50 border border-red-100 text-red-700"
+                          >
+                            <div className="flex-1">
+                              <span className="font-medium">{horario.hora_inicio.slice(0, 5)}</span>
+                              <span className="mx-2">-</span>
+                              <span className="font-medium">{horario.hora_fin.slice(0, 5)}</span>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
                   ) : (
                     <p className="text-sm text-muted-foreground">No hay horarios ocupados para esta fecha</p>
                   )}
@@ -532,25 +801,24 @@ export default function MisReservas() {
               </div>
               
               {conflictoHorario && (
-                <div className="rounded-md bg-red-50 p-3 text-sm text-red-800 border border-red-200">
-                  <div className="flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-red-600">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clipRule="evenodd" />
-                    </svg>
-                    <span className="font-medium">Conflicto de horario:</span>
-                  </div>
-                  <p className="mt-1 ml-7">{mensajeConflicto}</p>
-                </div>
+                <Alert variant="destructive" className="mt-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>Error de horario</AlertTitle>
+                  <AlertDescription>
+                    {mensajeConflicto}
+                  </AlertDescription>
+                </Alert>
               )}
 
               <div>
-                <Label htmlFor="comentario">Comentario (opcional)</Label>
-                <Textarea 
-                  id="comentario" 
-                  name="comentario" 
-                  value={nuevaReserva.comentario} 
-                  onChange={handleInputChange} 
-                  placeholder="Agregue un comentario o descripción para la reserva"
+                <Label htmlFor="comentario">Comentario <span className="text-red-500">*</span></Label>
+                <Textarea
+                  id="comentario"
+                  name="comentario"
+                  placeholder="Indica el motivo o detalles de la reserva"
+                  value={nuevaReserva.comentario}
+                  onChange={handleInputChange}
+                  className="resize-none"
                 />
               </div>
               <div className="flex items-center space-x-2">
@@ -590,12 +858,22 @@ export default function MisReservas() {
                           <div>
                             <h3 className="font-semibold">{reserva.sala.nombre}</h3>
                             <p className="text-sm text-muted-foreground">
-                              {new Date(reserva.fecha).toLocaleDateString('es-ES', {
-                                weekday: 'long',
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric'
-                              })}
+                              {(() => {
+                                // Usar directamente la fecha correcta de la base de datos
+                                const partesFecha = reserva.fecha.split('-');
+                                // Crear fecha en hora local para evitar desplazamientos de zona horaria
+                                const fecha = new Date(
+                                  parseInt(partesFecha[0]), // año
+                                  parseInt(partesFecha[1]) - 1, // mes (0-indexado)
+                                  parseInt(partesFecha[2]) // día
+                                );
+                                return fecha.toLocaleDateString('es-ES', {
+                                  weekday: 'long',
+                                  year: 'numeric',
+                                  month: 'long',
+                                  day: 'numeric'
+                                });
+                              })()}
                             </p>
                             <p className="text-sm">
                               {reserva.hora_inicio.slice(0, 5)} - {reserva.hora_fin.slice(0, 5)}

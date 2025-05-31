@@ -39,13 +39,14 @@ export async function middleware(request: NextRequest) {
   const allowedRoutes = {
     superadmin: ['/', '/gestion-salas', '/gestion-horarios', '/reservas', '/aprobaciones', '/usuarios', '/configuracion'],
     admin: ['/', '/gestion-horarios', '/reservas', '/aprobaciones'],
+    administrativo: ['/mis-reservas'],
     profesor: ['/mis-reservas'],
     alumno: ['/mis-reservas'],
   }
 
   // Verificar si el usuario tiene acceso a la ruta solicitada
   const path = request.nextUrl.pathname
-  if (user.rol !== 'superadmin' && user.rol !== 'admin' && path === '/') {
+  if (user.rol !== 'superadmin' && user.rol !== 'admin' && user.rol !== 'administrativo' && path === '/') {
     // Redirigir usuarios no admin a /mis-reservas cuando intentan acceder al dashboard
     return NextResponse.redirect(new URL('/mis-reservas', request.url))
   }

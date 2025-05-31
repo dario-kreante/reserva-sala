@@ -11,6 +11,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { Calendar } from "lucide-react"
 import { DisponibilidadCalendario } from "@/components/ui/disponibilidad-calendario"
+import { useToast } from "@/components/ui/use-toast"
+import { esFechaValida } from "@/app/utils/horarioValidation"
 
 interface DisponibilidadModalProps {
   salaId: number | null
@@ -28,12 +30,29 @@ export function DisponibilidadModal({
   buttonClassName = ""
 }: DisponibilidadModalProps) {
   const [open, setOpen] = useState(false)
+  const { toast } = useToast()
   
   const handleDateSelect = (date: Date | undefined) => {
-    if (date && onDateSelect) {
-      onDateSelect(date)
-      setOpen(false)
+    if (date) {
+      // Validar que la fecha no sea en el pasado
+      const fechaFormateada = date.toISOString().split('T')[0]
+      
+      if (!esFechaValida(fechaFormateada)) {
+        toast({
+          title: "Fecha inválida",
+          description: "No se pueden seleccionar fechas pasadas",
+          variant: "destructive",
+        })
+        setOpen(false)
+        return
+      }
+      
+      // Si la fecha es válida y hay callback, llamarlo
+      if (onDateSelect) {
+        onDateSelect(date)
+      }
     }
+    setOpen(false)
   }
   
   return (

@@ -164,9 +164,18 @@ export default function Dashboard() {
     // Preparar datos para el reporte
     const datosReservas = reservas.map(reserva => {
       const duracion = calcularDuracion(reserva.hora_inicio, reserva.hora_fin)
+      
+      // Formatear la fecha de reserva correctamente
+      const fechaReserva = new Date(reserva.fecha);
+      const fechaFormateada = fechaReserva.toLocaleDateString('es-ES', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+      
       return {
         'ID': reserva.id,
-        'Fecha': reserva.fecha,
+        'Fecha': fechaFormateada, // Usar la fecha formateada
         'Sala': reserva.sala?.nombre || 'Sin asignar',
         'Tipo de Sala': reserva.sala?.tipo || 'N/A',
         'Hora Inicio': reserva.hora_inicio,
@@ -331,6 +340,10 @@ export default function Dashboard() {
                 <Tooltip formatter={(value: any, name: string) => {
                   if (name === 'horas') return [`${value.toFixed(2)} horas`, 'Horas de uso']
                   if (name === 'porcentaje') return [`${value.toFixed(2)}%`, 'Porcentaje de ocupación']
+                  if (typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                    const fecha = new Date(value);
+                    return [fecha.toLocaleDateString('es-ES'), name];
+                  }
                   return [value, name]
                 }} />
                 <Legend />

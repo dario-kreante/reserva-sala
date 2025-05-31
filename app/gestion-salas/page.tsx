@@ -29,19 +29,30 @@ interface Sala {
   centro: string
   descripcion: string | null
   responsables?: string[]
+  activo: boolean
+}
+
+// Interfaz extendida para usar en el formulario
+interface SalaForm extends Omit<Sala, 'id' | 'capacidad' | 'activo'> {
+  capacidad: number | string
+  id?: number
+  responsables?: string[]
+  activo?: boolean
 }
 
 export default function GestionSalas() {
   const [salas, setSalas] = useState<Sala[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [nuevaSala, setNuevaSala] = useState<Omit<Sala, 'id'>>({
+  const [mostrarInactivas, setMostrarInactivas] = useState(false)
+  const [nuevaSala, setNuevaSala] = useState<SalaForm>({
     nombre: '',
     tipo: '',
-    capacidad: 0,
+    capacidad: '',
     centro: '',
     descripcion: '',
-    responsables: []
+    responsables: [],
+    activo: true
   })
   const [salaEditando, setSalaEditando] = useState<Sala | null>(null)
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
@@ -53,14 +64,22 @@ export default function GestionSalas() {
       setLoading(true);
       console.log("Obteniendo lista de salas...");
       
-      const { data, error } = await supabase
+      let query = supabase
         .from('salas')
         .select('*')
-        .order('nombre')
+        .order('nombre');
+      
+      // Si no se muestran inactivas, filtrar solo las activas
+      if (!mostrarInactivas) {
+        query = query.eq('activo', true);
+      }
+      
+      const { data, error } = await query;
 
       if (error) throw error
 
-      console.log(`Se encontraron ${data.length} salas`);
+      const estadoFiltro = mostrarInactivas ? "todas" : "activas";
+      console.log(`Se encontraron ${data.length} salas ${estadoFiltro}`);
       
       // Obtener los responsables para cada sala
       const salasConResponsables = await Promise.all(data.map(async (sala) => {
@@ -118,7 +137,7 @@ export default function GestionSalas() {
       const { data, error } = await supabase
         .from('usuarios')
         .select('id, nombre, apellido, rol')
-        .eq('rol', 'admin')
+        .in('rol', ['admin', 'administrativo'])
         .eq('activo', true)
         .order('nombre')
 
@@ -148,13 +167,13 @@ export default function GestionSalas() {
     }
     fetchSalas()
     fetchUsuarios()
-  }, [user, router])
+  }, [user, router, mostrarInactivas])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
     setNuevaSala(prev => ({
       ...prev,
-      [name]: name === 'capacidad' ? parseInt(value) || 0 : value
+      [name]: name === 'capacidad' ? (value === '' ? '' : parseInt(value) || 0) : value
     }))
   }
 
@@ -182,16 +201,29 @@ export default function GestionSalas() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
+      // Asegurarse de que capacidad sea un número al guardar
+      const capacidadNumerica = typeof nuevaSala.capacidad === 'string' 
+        ? (nuevaSala.capacidad === '' ? 0 : parseInt(nuevaSala.capacidad)) 
+        : nuevaSala.capacidad;
+      
+      // Crear una copia del objeto con capacidad convertida a número
+      const salaData = {
+        ...nuevaSala,
+        capacidad: capacidadNumerica,
+        activo: true
+      };
+        
       if (salaEditando) {
         // Actualizar sala existente
         const { error } = await supabase
           .from('salas')
           .update({
-            nombre: nuevaSala.nombre,
-            tipo: nuevaSala.tipo,
-            capacidad: nuevaSala.capacidad,
-            centro: nuevaSala.centro,
-            descripcion: nuevaSala.descripcion
+            nombre: salaData.nombre,
+            tipo: salaData.tipo,
+            capacidad: salaData.capacidad,
+            centro: salaData.centro,
+            descripcion: salaData.descripcion,
+            activo: true
           })
           .eq('id', salaEditando.id)
 
@@ -207,8 +239,8 @@ export default function GestionSalas() {
         if (errorDelete) throw errorDelete
 
         // Luego insertar los nuevos responsables
-        if (nuevaSala.responsables && nuevaSala.responsables.length > 0) {
-          const responsablesData = nuevaSala.responsables.map(usuarioId => ({
+        if (salaData.responsables && salaData.responsables.length > 0) {
+          const responsablesData = salaData.responsables.map(usuarioId => ({
             sala_id: salaEditando.id,
             usuario_id: usuarioId
           }))
@@ -229,20 +261,21 @@ export default function GestionSalas() {
         const { data, error } = await supabase
           .from('salas')
           .insert([{
-            nombre: nuevaSala.nombre,
-            tipo: nuevaSala.tipo,
-            capacidad: nuevaSala.capacidad,
-            centro: nuevaSala.centro,
-            descripcion: nuevaSala.descripcion
+            nombre: salaData.nombre,
+            tipo: salaData.tipo,
+            capacidad: salaData.capacidad,
+            centro: salaData.centro,
+            descripcion: salaData.descripcion,
+            activo: true
           }])
           .select()
 
         if (error) throw error
 
         // Insertar responsables si hay alguno seleccionado
-        if (nuevaSala.responsables && nuevaSala.responsables.length > 0 && data && data.length > 0) {
+        if (salaData.responsables && salaData.responsables.length > 0 && data && data.length > 0) {
           const salaId = data[0].id
-          const responsablesData = nuevaSala.responsables.map(usuarioId => ({
+          const responsablesData = salaData.responsables.map(usuarioId => ({
             sala_id: salaId,
             usuario_id: usuarioId
           }))
@@ -266,10 +299,11 @@ export default function GestionSalas() {
       setNuevaSala({
         nombre: '',
         tipo: '',
-        capacidad: 0,
+        capacidad: '',
         centro: '',
         descripcion: '',
-        responsables: []
+        responsables: [],
+        activo: true
       })
       
       // Actualizar los datos de la tabla
@@ -292,26 +326,27 @@ export default function GestionSalas() {
   }
 
   const handleEliminar = async (id: number) => {
-    if (confirm('¿Está seguro de eliminar esta sala?')) {
+    if (confirm('¿Está seguro de desactivar esta sala? No se eliminará, pero ya no estará disponible para nuevas reservas.')) {
       try {
+        // En lugar de eliminar, actualizar el campo 'activo' a false
         const { error } = await supabase
           .from('salas')
-          .delete()
+          .update({ activo: false })
           .eq('id', id)
 
         if (error) throw error
 
         toast({
-          title: "Sala eliminada",
-          description: "La sala ha sido eliminada exitosamente",
+          title: "Sala desactivada",
+          description: "La sala ha sido desactivada exitosamente. Se conserva el historial de reservas.",
         })
 
         fetchSalas()
       } catch (error) {
-        console.error('Error deleting sala:', error)
+        console.error('Error al desactivar sala:', error)
         toast({
           title: "Error",
-          description: "No se pudo eliminar la sala",
+          description: "No se pudo desactivar la sala",
           variant: "destructive",
         })
       }
@@ -335,7 +370,8 @@ export default function GestionSalas() {
         capacidad: sala.capacidad,
         centro: sala.centro,
         descripcion: sala.descripcion || '',
-        responsables: responsables.map(r => r.usuario_id)
+        responsables: responsables.map(r => r.usuario_id),
+        activo: sala.activo
       })
       setDialogOpen(true)
     } catch (error) {
@@ -363,10 +399,37 @@ export default function GestionSalas() {
 
       if (error) throw error
 
-      return data.map(r => `${r.usuarios.nombre} ${r.usuarios.apellido}`).join(', ')
+      return data.map(r => `${r.usuarios[0].nombre} ${r.usuarios[0].apellido}`).join(', ')
     } catch (error) {
       console.error('Error al obtener nombres de responsables:', error)
       return 'Error al cargar responsables'
+    }
+  }
+
+  const handleReactivar = async (id: number) => {
+    if (confirm('¿Está seguro de reactivar esta sala? Volverá a estar disponible para reservas.')) {
+      try {
+        const { error } = await supabase
+          .from('salas')
+          .update({ activo: true })
+          .eq('id', id)
+
+        if (error) throw error
+
+        toast({
+          title: "Sala reactivada",
+          description: "La sala ha sido reactivada exitosamente y está disponible para reservas.",
+        })
+
+        fetchSalas()
+      } catch (error) {
+        console.error('Error al reactivar sala:', error)
+        toast({
+          title: "Error",
+          description: "No se pudo reactivar la sala",
+          variant: "destructive",
+        })
+      }
     }
   }
 
@@ -374,117 +437,133 @@ export default function GestionSalas() {
     <div className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold">Gestión de Salas</h2>
-        <Dialog 
-          open={dialogOpen} 
-          onOpenChange={(open) => {
-            setDialogOpen(open)
-            if (!open) {
-              setSalaEditando(null)
-              setNuevaSala({
-                nombre: '',
-                tipo: '',
-                capacidad: 0,
-                centro: '',
-                descripcion: '',
-                responsables: []
-              })
-            }
-          }}
-        >
-          <DialogTrigger asChild>
-            <Button>Nueva Sala</Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>
-                {salaEditando ? 'Editar Sala' : 'Crear Nueva Sala'}
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="nombre">Nombre</Label>
-                <Input
-                  id="nombre"
-                  name="nombre"
-                  value={nuevaSala.nombre}
-                  onChange={handleInputChange}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="tipo">Tipo</Label>
-                <Select 
-                  value={nuevaSala.tipo} 
-                  onValueChange={handleSelectChange} 
-                  required
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccione un tipo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Clase">Clase</SelectItem>
-                    <SelectItem value="Auditorio">Auditorio</SelectItem>
-                    <SelectItem value="Reunión">Reunión</SelectItem>
-                    <SelectItem value="Laboratorio">Laboratorio</SelectItem>
-                    <SelectItem value="Terapia">Terapia</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="capacidad">Capacidad</Label>
-                <Input
-                  id="capacidad"
-                  name="capacidad"
-                  type="number"
-                  min="1"
-                  value={nuevaSala.capacidad}
-                  onChange={handleInputChange}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="centro">Centro</Label>
-                <Input
-                  id="centro"
-                  name="centro"
-                  value={nuevaSala.centro}
-                  onChange={handleInputChange}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="descripcion">Descripción</Label>
-                <Textarea
-                  id="descripcion"
-                  name="descripcion"
-                  value={nuevaSala.descripcion || ''}
-                  onChange={handleInputChange}
-                  rows={3}
-                />
-              </div>
-              <div>
-                <Label htmlFor="responsables">Responsables</Label>
-                <MultiSelect
-                  options={usuarios}
-                  selected={nuevaSala.responsables || []}
-                  onChange={handleResponsablesChange}
-                  placeholder="Seleccionar responsables"
-                />
-                {/* Mostrar los responsables seleccionados para depuración */}
-                {nuevaSala.responsables && nuevaSala.responsables.length > 0 && (
-                  <div className="mt-2 text-sm text-muted-foreground">
-                    Responsables seleccionados: {nuevaSala.responsables.length}
-                  </div>
-                )}
-              </div>
-              <div className="flex justify-end pt-4">
-                <Button type="submit">
-                  {salaEditando ? 'Actualizar' : 'Crear'}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center">
+            <Label htmlFor="mostrarInactivas" className="mr-2">
+              Mostrar salas inactivas
+            </Label>
+            <input
+              type="checkbox"
+              id="mostrarInactivas"
+              checked={mostrarInactivas}
+              onChange={(e) => setMostrarInactivas(e.target.checked)}
+              className="h-4 w-4"
+              title="Mostrar salas inactivas"
+            />
+          </div>
+          <Dialog 
+            open={dialogOpen} 
+            onOpenChange={(open) => {
+              setDialogOpen(open)
+              if (!open) {
+                setSalaEditando(null)
+                setNuevaSala({
+                  nombre: '',
+                  tipo: '',
+                  capacidad: '',
+                  centro: '',
+                  descripcion: '',
+                  responsables: [],
+                  activo: true
+                })
+              }
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button>Nueva Sala</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>
+                  {salaEditando ? 'Editar Sala' : 'Crear Nueva Sala'}
+                </DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <Label htmlFor="nombre">Nombre</Label>
+                  <Input
+                    id="nombre"
+                    name="nombre"
+                    value={nuevaSala.nombre}
+                    onChange={handleInputChange}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="tipo">Tipo</Label>
+                  <Select 
+                    value={nuevaSala.tipo} 
+                    onValueChange={handleSelectChange} 
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccione un tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Clase">Clase</SelectItem>
+                      <SelectItem value="Auditorio">Auditorio</SelectItem>
+                      <SelectItem value="Reunión">Reunión</SelectItem>
+                      <SelectItem value="Laboratorio">Laboratorio</SelectItem>
+                      <SelectItem value="Terapia">Terapia</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="capacidad">Capacidad</Label>
+                  <Input
+                    id="capacidad"
+                    name="capacidad"
+                    type="number"
+                    min="1"
+                    value={nuevaSala.capacidad === 0 && !salaEditando ? '' : nuevaSala.capacidad}
+                    onChange={handleInputChange}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="centro">Centro</Label>
+                  <Input
+                    id="centro"
+                    name="centro"
+                    value={nuevaSala.centro}
+                    onChange={handleInputChange}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="descripcion">Descripción</Label>
+                  <Textarea
+                    id="descripcion"
+                    name="descripcion"
+                    value={nuevaSala.descripcion || ''}
+                    onChange={handleInputChange}
+                    rows={3}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="responsables">Responsables</Label>
+                  <MultiSelect
+                    options={usuarios}
+                    selected={nuevaSala.responsables || []}
+                    onChange={handleResponsablesChange}
+                    placeholder="Seleccionar responsables"
+                  />
+                  {/* Mostrar los responsables seleccionados para depuración */}
+                  {nuevaSala.responsables && nuevaSala.responsables.length > 0 && (
+                    <div className="mt-2 text-sm text-muted-foreground">
+                      Responsables seleccionados: {nuevaSala.responsables.length}
+                    </div>
+                  )}
+                </div>
+                <div className="flex justify-end pt-4">
+                  <Button type="submit">
+                    {salaEditando ? 'Actualizar' : 'Crear'}
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {loading ? (
@@ -499,6 +578,7 @@ export default function GestionSalas() {
                 <TableHead>Capacidad</TableHead>
                 <TableHead>Centro</TableHead>
                 <TableHead>Responsables</TableHead>
+                <TableHead>Estado</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
@@ -511,13 +591,24 @@ export default function GestionSalas() {
                 </TableRow>
               ) : (
                 salas.map((sala) => (
-                  <TableRow key={sala.id}>
+                  <TableRow key={sala.id} className={!sala.activo ? 'bg-gray-100' : ''}>
                     <TableCell className="font-medium">{sala.nombre}</TableCell>
                     <TableCell>{sala.tipo}</TableCell>
                     <TableCell>{sala.capacidad}</TableCell>
                     <TableCell>{sala.centro}</TableCell>
                     <TableCell>
                       <ResponsablesList salaId={sala.id} />
+                    </TableCell>
+                    <TableCell>
+                      {sala.activo ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          Activa
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                          Inactiva
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -528,13 +619,24 @@ export default function GestionSalas() {
                       >
                         Editar
                       </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleEliminar(sala.id)}
-                      >
-                        Eliminar
-                      </Button>
+                      {sala.activo ? (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleEliminar(sala.id)}
+                        >
+                          Desactivar
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleReactivar(sala.id)}
+                          className="text-green-600 border-green-600 hover:bg-green-50"
+                        >
+                          Reactivar
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))

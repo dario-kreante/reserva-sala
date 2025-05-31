@@ -15,7 +15,7 @@ export interface Database {
           email: string
           nombre: string
           apellido: string
-          rol: 'superadmin' | 'admin' | 'profesor' | 'alumno'
+          rol: 'superadmin' | 'admin' | 'profesor' | 'alumno' | 'administrativo'
           es_usuario_externo: boolean
           departamento: string | null
           fecha_creacion: string

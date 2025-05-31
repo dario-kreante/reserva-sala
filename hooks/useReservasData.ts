@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useUser } from '@/hooks/useUser'
 
+// Contador global para solicitudes
+let requestCounter = 0;
+
 interface Sala {
   id: number
   nombre: string
@@ -19,6 +22,7 @@ interface ReservaResponse {
   estado: 'pendiente' | 'aprobada' | 'rechazada' | 'cancelada'
   es_urgente: boolean
   es_externo: boolean
+  es_reserva_sistema: boolean
   solicitante_nombre_completo: string | null
   institucion: string | null
   sala: {
@@ -32,6 +36,7 @@ interface ReservaResponse {
     apellido: string
     rol: string
   } | null
+  comentario: string | null
 }
 
 interface ReservaDB {
@@ -76,8 +81,10 @@ export function useReservasData() {
           estado,
           es_urgente,
           es_externo,
+          es_reserva_sistema,
           solicitante_nombre_completo,
           institucion,
+          comentario,
           sala:salas (
             id,
             nombre,
@@ -123,26 +130,84 @@ export function useReservasData() {
     }
   }
 
-  const fetchHorariosOcupados = async (salaId: number, fecha: string) => {
-    setLoadingHorarios(true)
+  const fetchHorariosOcupados = async (salaId: number, fechaStr: string, caller: string = 'no-identificado') => {
+    let requestId = requestCounter++;
+    console.log(`[${requestId}] fetchHorariosOcupados llamado desde ${caller} - sala: ${salaId}, fecha: ${fechaStr}`);
+    
     try {
+      setLoadingHorarios(true);
+      setError(null);
+      
+      // Normalizar formato de fecha
+      let fechaFormateada = fechaStr;
+      console.log(`[${requestId}] Fecha original: ${fechaStr}`);
+      
+      // Si la fecha viene en formato DD/MM/YYYY, convertir a YYYY-MM-DD
+      if (fechaStr.includes('/')) {
+        const [dia, mes, anio] = fechaStr.split('/');
+        fechaFormateada = `${anio}-${mes}-${dia}`;
+        console.log(`[${requestId}] Fecha convertida de DD/MM/YYYY a YYYY-MM-DD: ${fechaFormateada}`);
+      }
+      
+      // Validar que la fecha sea válida
+      if (!fechaFormateada.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        console.error(`[${requestId}] Formato de fecha inválido: ${fechaFormateada}`);
+        setLoadingHorarios(false);
+        setHorariosOcupados([]);
+        return [];
+      }
+      
+      console.log(`[${requestId}] Consultando horarios ocupados para sala ${salaId} en fecha ${fechaFormateada}`);
+      
+      // Limpiar horarios ocupados anteriores antes de obtener nuevos
+      setHorariosOcupados([]);
+      
+      // Obtener reservas para la fecha y sala específicas
       const { data, error } = await supabase
         .from('reservas')
-        .select('hora_inicio, hora_fin')
+        .select('hora_inicio, hora_fin, estado')
+        .eq('fecha', fechaFormateada)
         .eq('sala_id', salaId)
-        .eq('fecha', fecha)
-        .in('estado', ['pendiente', 'aprobada'])
-        .order('hora_inicio')
-
-      if (error) throw error
-      setHorariosOcupados(data || [])
-    } catch (error) {
-      console.error('Error fetching horarios ocupados:', error)
-      setError('No se pudieron cargar los horarios ocupados')
-    } finally {
-      setLoadingHorarios(false)
+        .in('estado', ['pendiente', 'aprobada']);
+        
+      if (error) {
+        console.error(`[${requestId}] Error al obtener horarios ocupados:`, error);
+        setError(error.message);
+        setLoadingHorarios(false);
+        return [];
+      }
+      
+      console.log(`[${requestId}] Resultado de la consulta:`, data);
+      
+      if (data && data.length > 0) {
+        // Formatear los horarios
+        const horarios = data.map(reserva => ({
+          hora_inicio: reserva.hora_inicio,
+          hora_fin: reserva.hora_fin
+        }));
+        
+        // Ordenar los horarios por hora de inicio
+        const horariosOrdenados = [...horarios].sort((a, b) => {
+          return a.hora_inicio.localeCompare(b.hora_inicio);
+        });
+        
+        setHorariosOcupados(horariosOrdenados);
+        console.log(`[${requestId}] Horarios ocupados establecidos (ordenados):`, horariosOrdenados);
+        setLoadingHorarios(false);
+        return horariosOrdenados;
+      } else {
+        console.log(`[${requestId}] No se encontraron horarios ocupados`);
+        setHorariosOcupados([]);
+        setLoadingHorarios(false);
+        return [];
+      }
+    } catch (err) {
+      console.error(`[${requestId}] Error en fetchHorariosOcupados:`, err);
+      setError(err instanceof Error ? err.message : String(err));
+      setLoadingHorarios(false);
+      return [];
     }
-  }
+  };
 
   useEffect(() => {
     if (user) {

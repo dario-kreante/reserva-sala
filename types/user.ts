@@ -3,6 +3,6 @@ export interface User {
   nombre: string;
   apellido: string;
   email: string;
-  rol: 'superadmin' | 'admin' | 'profesor' | 'alumno';
+  rol: 'superadmin' | 'admin' | 'profesor' | 'alumno' | 'administrativo';
 }
 
