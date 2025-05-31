@@ -7,11 +7,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/use-toast"
 import { supabase } from '@/lib/supabase'
 import { useResponsableSalas } from '@/hooks/useResponsableSalas'
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Info, Calendar, Check, AlertTriangle } from "lucide-react"
+import { Info, Calendar, Check, AlertTriangle, BookOpen, Users, GraduationCap } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 
 interface Horario {
@@ -68,6 +69,12 @@ export default function GestionHorarios() {
     hora_inicio: '',
     hora_fin: '',
     recurrencia: '',
+    // Campos descriptivos para reservas recurrentes
+    nombre_modulo: '',
+    seccion: '',
+    codigo_asignatura: '',
+    profesor_responsable: '',
+    descripcion: '',
   })
   const [periodosSeleccionados, setPeriodosSeleccionados] = useState<string[]>([])
   const [creacionMultiple, setCreacionMultiple] = useState(false)
@@ -84,17 +91,49 @@ export default function GestionHorarios() {
 
   // Validar formulario
   useEffect(() => {
-    const { sala_id, fecha, hora_inicio, hora_fin, recurrencia } = nuevoHorario
+    const { 
+      sala_id, 
+      fecha, 
+      hora_inicio, 
+      hora_fin, 
+      recurrencia,
+      nombre_modulo,
+      codigo_asignatura,
+      profesor_responsable
+    } = nuevoHorario
+    
+    // Campos descriptivos obligatorios
+    const camposDescriptivosValidos = Boolean(
+      nombre_modulo.trim() && 
+      codigo_asignatura.trim() && 
+      profesor_responsable.trim()
+    )
     
     // Si es creación múltiple, validar que haya periodos seleccionados
     if (creacionMultiple) {
       setFormValido(
-        Boolean(sala_id && fecha && hora_inicio && hora_fin && recurrencia && periodosSeleccionados.length > 0)
+        Boolean(
+          sala_id && 
+          fecha && 
+          hora_inicio && 
+          hora_fin && 
+          recurrencia && 
+          periodosSeleccionados.length > 0 &&
+          camposDescriptivosValidos
+        )
       )
     } else {
-      // Validación original
+      // Validación original con campos descriptivos
       setFormValido(
-        Boolean(sala_id && nuevoHorario.periodo_id && fecha && hora_inicio && hora_fin && recurrencia)
+        Boolean(
+          sala_id && 
+          nuevoHorario.periodo_id && 
+          fecha && 
+          hora_inicio && 
+          hora_fin && 
+          recurrencia &&
+          camposDescriptivosValidos
+        )
       )
     }
   }, [nuevoHorario, periodosSeleccionados, creacionMultiple])
@@ -214,7 +253,14 @@ export default function GestionHorarios() {
             fecha,
             hora_inicio,
             hora_fin,
-            recurrencia
+            recurrencia,
+            // Campos descriptivos
+            nombre_modulo: nuevoHorario.nombre_modulo,
+            seccion: nuevoHorario.seccion,
+            codigo_asignatura: nuevoHorario.codigo_asignatura,
+            profesor_responsable: nuevoHorario.profesor_responsable,
+            descripcion: nuevoHorario.descripcion,
+            activo: true
           }
           
           // Verificar superposición
@@ -282,7 +328,14 @@ export default function GestionHorarios() {
           fecha,
           hora_inicio,
           hora_fin,
-          recurrencia
+          recurrencia,
+          // Campos descriptivos
+          nombre_modulo: nuevoHorario.nombre_modulo,
+          seccion: nuevoHorario.seccion,
+          codigo_asignatura: nuevoHorario.codigo_asignatura,
+          profesor_responsable: nuevoHorario.profesor_responsable,
+          descripcion: nuevoHorario.descripcion,
+          activo: true
         }
 
         // Verificar superposición
@@ -331,6 +384,12 @@ export default function GestionHorarios() {
         hora_inicio: '',
         hora_fin: '',
         recurrencia: '',
+        // Campos descriptivos para reservas recurrentes
+        nombre_modulo: '',
+        seccion: '',
+        codigo_asignatura: '',
+        profesor_responsable: '',
+        descripcion: '',
       })
       setPeriodosSeleccionados([])
       setCreacionMultiple(false)
@@ -408,7 +467,7 @@ export default function GestionHorarios() {
           <DialogTrigger asChild>
             <Button>Nuevo Horario</Button>
           </DialogTrigger>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Crear Nuevo Horario</DialogTitle>
             </DialogHeader>
@@ -543,6 +602,66 @@ export default function GestionHorarios() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              
+              {/* Sección de información académica */}
+              <div className="border-t pt-4 space-y-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <BookOpen className="w-4 h-4" />
+                  <Label className="text-sm font-semibold">Información Académica</Label>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="codigo_asignatura">Código Asignatura *</Label>
+                    <Input
+                      id="codigo_asignatura"
+                      value={nuevoHorario.codigo_asignatura}
+                      onChange={(e) => setNuevoHorario(prev => ({ ...prev, codigo_asignatura: e.target.value }))}
+                      placeholder="ej: PSI101, MAT201"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="seccion">Sección</Label>
+                    <Input
+                      id="seccion"
+                      value={nuevoHorario.seccion}
+                      onChange={(e) => setNuevoHorario(prev => ({ ...prev, seccion: e.target.value }))}
+                      placeholder="ej: A, B, 01"
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <Label htmlFor="nombre_modulo">Nombre del Módulo/Asignatura *</Label>
+                  <Input
+                    id="nombre_modulo"
+                    value={nuevoHorario.nombre_modulo}
+                    onChange={(e) => setNuevoHorario(prev => ({ ...prev, nombre_modulo: e.target.value }))}
+                    placeholder="ej: Psicología General I, Estadística Aplicada"
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="profesor_responsable">Profesor Responsable *</Label>
+                  <Input
+                    id="profesor_responsable"
+                    value={nuevoHorario.profesor_responsable}
+                    onChange={(e) => setNuevoHorario(prev => ({ ...prev, profesor_responsable: e.target.value }))}
+                    placeholder="ej: Dr. María González, Prof. Juan Pérez"
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="descripcion">Descripción Adicional</Label>
+                  <Textarea
+                    id="descripcion"
+                    value={nuevoHorario.descripcion}
+                    onChange={(e) => setNuevoHorario(prev => ({ ...prev, descripcion: e.target.value }))}
+                    placeholder="ej: Cátedra teórica, Laboratorio práctico"
+                    rows={2}
+                  />
+                </div>
               </div>
               
               {creacionMultiple && periodosSeleccionados.length > 0 && (
