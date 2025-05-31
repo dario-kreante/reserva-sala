@@ -24,7 +24,7 @@ import {
 import { 
   Users, CalendarCheck2, Clock, TrendingUp,
   BarChart3, PieChart as PieChartIcon, Download, Plus, X,
-  User, Building, Calendar, MessageSquare, Tag
+  User, Building, Calendar, MessageSquare, Tag, BookOpen, GraduationCap, FileText
 } from 'lucide-react'
 import { toast } from "@/components/ui/use-toast"
 import {
@@ -451,12 +451,27 @@ export default function Home() {
       // Obtener color según el estado
       const color = getColorPorEstado(reserva.estado, reserva.es_reserva_sistema);
       
-      // Crear el evento para el calendario
+      // Crear el evento para el calendario con título descriptivo
+      let titulo: string;
+      if (reserva.es_reserva_sistema) {
+        // Para reservas del sistema, usar información académica
+        if (reserva.nombre_modulo || reserva.profesor_responsable) {
+          const partes = [];
+          if (reserva.nombre_modulo) partes.push(reserva.nombre_modulo);
+          if (reserva.profesor_responsable) partes.push(reserva.profesor_responsable);
+          titulo = partes.join(' - ');
+        } else {
+          titulo = 'Reserva del Sistema';
+        }
+      } else if (reserva.es_externo) {
+        titulo = reserva.solicitante_nombre_completo || 'Externo';
+      } else {
+        titulo = reserva.usuario?.nombre ? `${reserva.usuario.nombre} ${reserva.usuario.apellido || ''}` : 'Usuario';
+      }
+
       return {
         id: reserva.id.toString(),
-        title: reserva.es_externo ? 
-          (reserva.solicitante_nombre_completo || 'Externo') : 
-          (reserva.usuario?.nombre ? `${reserva.usuario.nombre} ${reserva.usuario.apellido || ''}` : 'Usuario'),
+        title: titulo,
         start: `${fechaEvento}T${horaInicio}`,
         end: `${fechaEvento}T${horaFin}`,
         backgroundColor: color,
@@ -1056,17 +1071,54 @@ export default function Home() {
                 </div>
               </div>
               
-              {reservaSeleccionada.comentario && (
-                 <div className="grid grid-cols-[auto_1fr] items-start gap-4 border-t pt-4">
+              {/* Mostrar información académica para reservas del sistema o comentario para reservas manuales */}
+              {reservaSeleccionada.es_reserva_sistema ? (
+                // Información académica para reservas del sistema
+                (reservaSeleccionada.nombre_modulo || reservaSeleccionada.profesor_responsable) && (
+                  <div className="grid gap-4 border-t pt-4">
+                    {reservaSeleccionada.nombre_modulo && (
+                      <div className="grid grid-cols-[auto_1fr] items-start gap-4">
+                        <span className="text-muted-foreground flex items-center gap-2">
+                          <BookOpen className="h-4 w-4" />
+                          Módulo:
+                        </span>
+                        <p className="text-sm font-medium">{reservaSeleccionada.nombre_modulo}</p>
+                      </div>
+                    )}
+                    {reservaSeleccionada.profesor_responsable && (
+                      <div className="grid grid-cols-[auto_1fr] items-start gap-4">
+                        <span className="text-muted-foreground flex items-center gap-2">
+                          <GraduationCap className="h-4 w-4" />
+                          Profesor:
+                        </span>
+                        <p className="text-sm font-medium">{reservaSeleccionada.profesor_responsable}</p>
+                      </div>
+                    )}
+                    {reservaSeleccionada.descripcion && (
+                      <div className="grid grid-cols-[auto_1fr] items-start gap-4">
+                        <span className="text-muted-foreground flex items-center gap-2">
+                          <FileText className="h-4 w-4" />
+                          Descripción:
+                        </span>
+                        <p className="text-sm">{reservaSeleccionada.descripcion}</p>
+                      </div>
+                    )}
+                  </div>
+                )
+              ) : (
+                // Comentario para reservas manuales
+                reservaSeleccionada.comentario && (
+                  <div className="grid grid-cols-[auto_1fr] items-start gap-4 border-t pt-4">
                     <span className="text-muted-foreground flex items-center gap-2">
                       <MessageSquare className="h-4 w-4" />
                       Comentario:
                     </span>
-                  <p className="text-sm">{reservaSeleccionada.comentario}</p>
-                </div>
+                    <p className="text-sm">{reservaSeleccionada.comentario}</p>
+                  </div>
+                )
               )}
               
-              <div className={`grid grid-cols-[auto_1fr] items-center gap-4 ${!reservaSeleccionada.comentario ? 'border-t pt-4' : ''}`}>
+              <div className={`grid grid-cols-[auto_1fr] items-center gap-4 ${!(reservaSeleccionada.es_reserva_sistema ? (reservaSeleccionada.nombre_modulo || reservaSeleccionada.profesor_responsable) : reservaSeleccionada.comentario) ? 'border-t pt-4' : ''}`}>
                 <span className="text-muted-foreground flex items-center gap-2">
                   <Tag className="h-4 w-4" />
                   Estado:
