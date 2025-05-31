@@ -42,11 +42,11 @@ export function useResponsableSalas() {
         if (user?.rol === 'admin' && user?.id) {
           setPuedeVerTodo(false)
           
-          // Intentar obtener los IDs de las salas de las que el usuario es responsable
-          console.log('Intentando consultar salas_responsables para usuario:', user.id)
+          // Obtener las salas de las que el usuario es responsable
+          console.log('Consultando salas_responsables para usuario:', user.id)
           const { data: relaciones, error: errorResponsables } = await supabase
             .from('salas_responsables')
-            .select('*')
+            .select('sala_id')
             .eq('usuario_id', user.id)
           
           if (errorResponsables) {
