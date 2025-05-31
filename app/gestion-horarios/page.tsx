@@ -656,9 +656,12 @@ export default function GestionHorarios() {
       {esAdmin && !esSuperAdmin && (
         <Alert className="mb-6">
           <Info className="h-4 w-4" />
-          <AlertTitle>Acceso limitado</AlertTitle>
+          <AlertTitle>Gestión de Horarios - Administrador</AlertTitle>
           <AlertDescription>
-            Solo puedes gestionar horarios de las salas de las que eres responsable ({salasResponsable.length} salas).
+            {salasResponsable.length > 0 
+              ? `Puedes gestionar horarios de ${salasResponsable.length} sala(s): ${salasResponsable.map(s => s.nombre).join(', ')}.`
+              : "Actualmente tienes acceso a todas las salas. El sistema de asignación específica de salas está en configuración."
+            }
           </AlertDescription>
         </Alert>
       )}

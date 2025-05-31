@@ -42,24 +42,63 @@ export function useResponsableSalas() {
         if (user?.rol === 'admin' && user?.id) {
           setPuedeVerTodo(false)
           
-          // Obtener las salas de las que el usuario es responsable
-          const { data: salasData, error: errorResponsables } = await supabase
+          // Intentar obtener los IDs de las salas de las que el usuario es responsable
+          const { data: relaciones, error: errorResponsables } = await supabase
             .from('salas_responsables')
-            .select(`
-              sala_id,
-              salas:sala_id(id, nombre)
-            `)
+            .select('sala_id')
             .eq('usuario_id', user.id)
           
-          if (errorResponsables) throw errorResponsables
+          if (errorResponsables) {
+            console.error('Error al obtener relaciones sala-responsable (puede que la tabla no exista):', errorResponsables)
+            
+            // Si hay error (tabla no existe), temporalmente permitir que los admins vean todas las salas
+            console.log('Fallback: permitiendo acceso a todas las salas para admin')
+            const { data: todasLasSalas, error: errorSalas } = await supabase
+              .from('salas')
+              .select('id, nombre')
+              .eq('activo', true)
+              .order('nombre')
+            
+            if (errorSalas) throw errorSalas
+            
+            setSalasResponsable(todasLasSalas || [])
+            return
+          }
           
-          // Transformar los datos para obtener un array de salas
-          const salas = salasData?.map(item => ({
-            id: item.salas[0].id,
-            nombre: item.salas[0].nombre
-          })) || []
+          console.log('Relaciones encontradas para usuario:', user.id, relaciones)
           
-          setSalasResponsable(salas)
+          if (!relaciones || relaciones.length === 0) {
+            console.log('No se encontraron salas asignadas para el usuario. Por ahora, permitir acceso a todas las salas.')
+            
+            // Temporalmente, si no hay asignaciones, permitir ver todas las salas
+            const { data: todasLasSalas, error: errorSalas } = await supabase
+              .from('salas')
+              .select('id, nombre')
+              .eq('activo', true)
+              .order('nombre')
+            
+            if (errorSalas) throw errorSalas
+            
+            setSalasResponsable(todasLasSalas || [])
+            return
+          }
+          
+          // Obtener los detalles de las salas
+          const salaIds = relaciones.map(rel => rel.sala_id)
+          const { data: salasData, error: errorSalas } = await supabase
+            .from('salas')
+            .select('id, nombre')
+            .in('id', salaIds)
+            .eq('activo', true)
+            .order('nombre')
+          
+          if (errorSalas) {
+            console.error('Error al obtener detalles de salas:', errorSalas)
+            throw errorSalas
+          }
+          
+          console.log('Salas encontradas:', salasData)
+          setSalasResponsable(salasData || [])
           return
         }
         
