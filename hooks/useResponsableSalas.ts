@@ -43,15 +43,19 @@ export function useResponsableSalas() {
           setPuedeVerTodo(false)
           
           // Intentar obtener los IDs de las salas de las que el usuario es responsable
+          console.log('Intentando consultar salas_responsables para usuario:', user.id)
           const { data: relaciones, error: errorResponsables } = await supabase
             .from('salas_responsables')
-            .select('sala_id')
+            .select('*')
             .eq('usuario_id', user.id)
           
           if (errorResponsables) {
-            console.error('Error al obtener relaciones sala-responsable (puede que la tabla no exista):', errorResponsables)
+            console.error('Error al obtener relaciones sala-responsable:', errorResponsables)
+            console.error('Error code:', errorResponsables.code)
+            console.error('Error message:', errorResponsables.message)
+            console.error('Error details:', errorResponsables.details)
             
-            // Si hay error (tabla no existe), temporalmente permitir que los admins vean todas las salas
+            // Si hay error (tabla no existe o no hay datos), temporalmente permitir que los admins vean todas las salas
             console.log('Fallback: permitiendo acceso a todas las salas para admin')
             const { data: todasLasSalas, error: errorSalas } = await supabase
               .from('salas')
@@ -61,11 +65,13 @@ export function useResponsableSalas() {
             
             if (errorSalas) throw errorSalas
             
+            console.log('Salas obtenidas en fallback:', todasLasSalas)
             setSalasResponsable(todasLasSalas || [])
             return
           }
           
           console.log('Relaciones encontradas para usuario:', user.id, relaciones)
+          console.log('Estructura de relaciones:', JSON.stringify(relaciones, null, 2))
           
           if (!relaciones || relaciones.length === 0) {
             console.log('No se encontraron salas asignadas para el usuario. Por ahora, permitir acceso a todas las salas.')
@@ -79,12 +85,15 @@ export function useResponsableSalas() {
             
             if (errorSalas) throw errorSalas
             
+            console.log('Salas obtenidas para usuario sin asignaciones:', todasLasSalas)
             setSalasResponsable(todasLasSalas || [])
             return
           }
           
           // Obtener los detalles de las salas
           const salaIds = relaciones.map(rel => rel.sala_id)
+          console.log('IDs de salas a buscar:', salaIds)
+          
           const { data: salasData, error: errorSalas } = await supabase
             .from('salas')
             .select('id, nombre')
@@ -97,7 +106,7 @@ export function useResponsableSalas() {
             throw errorSalas
           }
           
-          console.log('Salas encontradas:', salasData)
+          console.log('Salas encontradas para usuario con asignaciones:', salasData)
           setSalasResponsable(salasData || [])
           return
         }
