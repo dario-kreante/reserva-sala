@@ -25,22 +25,32 @@ interface ReservaResponse {
   es_reserva_sistema: boolean
   solicitante_nombre_completo: string | null
   institucion: string | null
+  telefono: string | null
+  mail_externos: string | null
+  created_at: string | null
+  ultima_actualizacion: string | null
   sala: {
     id: number
     nombre: string
     tipo: string
+    capacidad: number | null
+    centro: string | null
   } | null
   usuario: {
     id: string
     nombre: string
     apellido: string
     rol: string
+    email: string | null
+    departamento: string | null
   } | null
   comentario: string | null
+  motivo_rechazo: string | null
   // Campos académicos para reservas del sistema
   nombre_modulo: string | null
+  codigo_asignatura: string | null
+  seccion: string | null
   profesor_responsable: string | null
-  descripcion: string | null
 }
 
 interface ReservaDB {
@@ -75,6 +85,17 @@ export function useReservasData() {
   const fetchReservas = async () => {
     try {
       setLoading(true)
+      console.log('🔄 useReservasData - Iniciando fetchReservas...')
+      
+      // DIAGNÓSTICO: Verificar el total de reservas en la base de datos
+      const { count, error: countError } = await supabase
+        .from('reservas')
+        .select('*', { count: 'exact', head: true })
+      
+      if (!countError) {
+        console.log('📊 useReservasData - Total de reservas en DB:', count)
+      }
+      
       const { data, error } = await supabase
         .from('reservas')
         .select<any, ReservaResponse>(`
@@ -88,29 +109,47 @@ export function useReservasData() {
           es_reserva_sistema,
           solicitante_nombre_completo,
           institucion,
+          telefono,
+          mail_externos,
+          created_at,
+          ultima_actualizacion,
           comentario,
+          motivo_rechazo,
           nombre_modulo,
+          codigo_asignatura,
+          seccion,
           profesor_responsable,
-          descripcion,
           sala:salas (
             id,
             nombre,
-            tipo
+            tipo,
+            capacidad,
+            centro
           ),
           usuario:usuarios (
             id,
             nombre,
             apellido,
-            rol
+            rol,
+            email,
+            departamento
           )
         `)
         .order('fecha', { ascending: false })
 
       if (error) throw error
 
+      console.log('✅ useReservasData - Reservas obtenidas:', data?.length || 0)
+      console.log('📋 useReservasData - Primeras 3 reservas:', data?.slice(0, 3))
+      console.log('🔍 useReservasData - Tipos de reservas:', {
+        sistema: data?.filter(r => r.es_reserva_sistema).length || 0,
+        externas: data?.filter(r => r.es_externo).length || 0,
+        normales: data?.filter(r => !r.es_reserva_sistema && !r.es_externo).length || 0
+      })
+
       setReservas(data || [])
     } catch (error) {
-      console.error('Error fetching reservas:', error)
+      console.error('❌ useReservasData - Error fetching reservas:', error)
       setError('No se pudieron cargar las reservas')
     } finally {
       setLoading(false)

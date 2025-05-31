@@ -98,6 +98,55 @@ export default function MisReservas() {
   const prevSelectedDate = useRef<string | null>(null);
   const prevSelectedSala = useRef<string | null>(null);
   
+  // Función para limpiar el formulario
+  const limpiarFormulario = () => {
+    // Verificar si hay contenido en el formulario antes de limpiar
+    const hayContenido = nuevaReserva.sala || 
+                        nuevaReserva.fecha || 
+                        nuevaReserva.horaInicio || 
+                        nuevaReserva.horaFin || 
+                        nuevaReserva.comentario?.trim() ||
+                        nuevaReserva.solicitanteNombreCompleto ||
+                        nuevaReserva.institucion ||
+                        nuevaReserva.mailExternos ||
+                        nuevaReserva.telefono;
+
+    setNuevaReserva({
+      sala: null,
+      fecha: '',
+      horaInicio: '',
+      horaFin: '',
+      esUrgente: false,
+      esExterno: false,
+      solicitanteNombreCompleto: '',
+      institucion: '',
+      mailExternos: '',
+      telefono: '',
+      comentario: ''
+    })
+    setSelectedSala(null)
+    setSelectedDate(undefined)
+    setFechaInput('')
+    setConflictoHorario(false)
+    setMensajeConflicto('')
+    setMostrarAlertaExito(false)
+    
+    // Resetear las referencias
+    prevSelectedDate.current = null
+    prevSelectedSala.current = null
+    
+    // Mostrar mensaje de confirmación solo si había contenido
+    if (hayContenido) {
+      toast({
+        title: "Formulario limpiado",
+        description: "Todos los campos han sido restablecidos",
+        variant: "default",
+      })
+    }
+    
+    console.log('✅ Formulario limpiado completamente')
+  }
+  
   // Creamos una función memoizada para fetchHorariosOcupados
   const fetchOcupados = useCallback(
     async (salaId: number, fechaStr: string, caller: string) => {
@@ -239,15 +288,35 @@ export default function MisReservas() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     
-    // Si es el campo de fecha en formato DD/MM/YYYY
-    if (name === 'fecha' && value.includes('/')) {
+    // Si es el campo de fecha (ya sea DD/MM/YYYY o YYYY-MM-DD del input tipo date)
+    if (name === 'fecha') {
+      let newDate: Date | null = null;
+      
+      // Manejar formato DD/MM/YYYY (entrada manual)
+      if (value.includes('/')) {
       setFechaInput(value);
       
       const [day, month, year] = value.split('/').map(Number);
       if (day && month && year) {
         try {
-          const newDate = new Date(year, month - 1, day);
-          if (isValid(newDate)) {
+            newDate = new Date(year, month - 1, day);
+          } catch (error) {
+            console.error("Error al procesar la fecha manual:", error);
+          }
+        }
+      }
+      // Manejar formato YYYY-MM-DD (input tipo date)
+      else if (value) {
+        try {
+          newDate = new Date(value + 'T00:00:00');
+          setFechaInput(format(newDate, 'dd/MM/yyyy'));
+        } catch (error) {
+          console.error("Error al procesar la fecha del input:", error);
+        }
+      }
+      
+      // Si logramos crear una fecha válida
+      if (newDate && isValid(newDate)) {
             // Validar que la fecha no sea en el pasado
             const hoy = new Date();
             hoy.setHours(0, 0, 0, 0);
@@ -261,6 +330,8 @@ export default function MisReservas() {
               });
               return;
             }
+        
+        console.log('✅ Nueva fecha seleccionada:', format(newDate, 'yyyy-MM-dd'));
             
             setSelectedDate(newDate);
             setNuevaReserva(prev => ({
@@ -268,14 +339,17 @@ export default function MisReservas() {
               fecha: format(newDate, 'yyyy-MM-dd'),
             }));
             
-            // Si tenemos sala seleccionada, consultamos ocupados
+        // Limpiar estados de conflicto cuando cambia la fecha
+        setConflictoHorario(false);
+        setMensajeConflicto('');
+        
+        // Si tenemos sala seleccionada, consultamos horarios ocupados
             if (selectedSala) {
               const dateStr = format(newDate, 'yyyy-MM-dd');
-              fetchOcupados(Number(selectedSala), dateStr, 'handleInputChange');
-            }
-          }
-        } catch (error) {
-          console.error("Error al procesar la fecha:", error);
+          console.log('🔍 Actualizando horarios ocupados para nueva fecha:', dateStr);
+          fetchOcupados(Number(selectedSala), dateStr, 'handleInputChange-fecha');
+        } else {
+          console.log('⚠️ No hay sala seleccionada para consultar horarios ocupados');
         }
       }
     } else {
@@ -507,19 +581,8 @@ export default function MisReservas() {
       setMensajeExito(`Tu reserva ha sido creada exitosamente y está en estado ${nuevaReservaCreada.estado}.`)
       setMostrarAlertaExito(true)
       
-      setNuevaReserva({
-        sala: null,
-        fecha: '',
-        horaInicio: '',
-        horaFin: '',
-        esUrgente: false,
-        esExterno: false,
-        solicitanteNombreCompleto: '',
-        institucion: '',
-        mailExternos: '',
-        telefono: '',
-        comentario: ''
-      })
+      // Limpiar formulario usando la función dedicada
+      limpiarFormulario()
       
       // Refrescar la lista de reservas
       fetchReservas()
@@ -811,15 +874,24 @@ export default function MisReservas() {
               )}
 
               <div>
-                <Label htmlFor="comentario">Comentario <span className="text-red-500">*</span></Label>
+                <Label htmlFor="comentario">
+                  Comentario <span className="text-red-500">*</span>
+                  <span className="text-sm text-muted-foreground ml-1">(Obligatorio)</span>
+                </Label>
                 <Textarea
                   id="comentario"
                   name="comentario"
-                  placeholder="Indica el motivo o detalles de la reserva"
+                  placeholder="Indica el motivo o detalles de la reserva (campo obligatorio)"
                   value={nuevaReserva.comentario}
                   onChange={handleInputChange}
-                  className="resize-none"
+                  className={`resize-none ${!nuevaReserva.comentario?.trim() ? 'border-red-200 focus:border-red-400' : ''}`}
+                  required
                 />
+                {!nuevaReserva.comentario?.trim() && (
+                  <p className="text-sm text-red-600 mt-1">
+                    El comentario es obligatorio para procesar la reserva
+                  </p>
+                )}
               </div>
               <div className="flex items-center space-x-2">
                 <Checkbox 
@@ -829,7 +901,37 @@ export default function MisReservas() {
                 />
                 <Label htmlFor="urgente">Reserva Urgente</Label>
               </div>
-              <Button type="submit">Solicitar Reserva</Button>
+              <div className="flex gap-3 pt-2">
+                <Button 
+                  type="button"
+                  variant="outline"
+                  onClick={limpiarFormulario}
+                  className="flex-1"
+                >
+                  Limpiar Formulario
+                </Button>
+                <Button 
+                  type="submit" 
+                  disabled={
+                    !nuevaReserva.sala || 
+                    !nuevaReserva.fecha || 
+                    !nuevaReserva.horaInicio || 
+                    !nuevaReserva.horaFin || 
+                    !nuevaReserva.comentario?.trim() ||
+                    conflictoHorario
+                  }
+                  className="flex-1"
+                >
+                  {(!nuevaReserva.sala || !nuevaReserva.fecha || !nuevaReserva.horaInicio || !nuevaReserva.horaFin) 
+                    ? 'Completa todos los campos' 
+                    : !nuevaReserva.comentario?.trim() 
+                      ? 'Agrega un comentario' 
+                      : conflictoHorario 
+                        ? 'Resuelve conflicto de horario' 
+                        : 'Solicitar Reserva'
+                  }
+                </Button>
+              </div>
             </form>
           </CardContent>
         </Card>

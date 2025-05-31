@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/use-toast"
 import { supabase } from '@/lib/supabase'
 import { useResponsableSalas } from '@/hooks/useResponsableSalas'
+import { useUser } from '@/hooks/useUser'
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Info, Calendar, Check, AlertTriangle, BookOpen, Users, GraduationCap } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -79,6 +80,13 @@ export default function GestionHorarios() {
   const [formValido, setFormValido] = useState(false)
   const [mostrarAlertaExito, setMostrarAlertaExito] = useState(false)
   const [mensajeExito, setMensajeExito] = useState('')
+  
+  // Estado para controlar la inicialización
+  const [datosInicializados, setDatosInicializados] = useState(false)
+  
+  // Ref para controlar que fetchData solo se ejecute una vez por carga
+  const fetchDataExecuted = useRef(false)
+  
   const { 
     salasResponsable, 
     loading: loadingSalas, 
@@ -86,6 +94,8 @@ export default function GestionHorarios() {
     esSuperAdmin,
     esAdmin
   } = useResponsableSalas()
+  
+  const { loading: userLoading } = useUser()
 
   // Validar formulario
   useEffect(() => {
@@ -149,7 +159,17 @@ export default function GestionHorarios() {
     try {
       setLoading(true)
       
-      // Cargar horarios
+      // Esperar a que se carguen las salas responsables si es necesario
+      if (loadingSalas) {
+        console.log('⏳ Esperando carga de salas responsables...')
+        return
+      }
+      
+      console.log('🏢 Salas responsables:', salasResponsable.length, salasResponsable.map(s => `${s.id}-${s.nombre}`))
+      console.log('👤 Es admin:', esAdmin)
+      console.log('👤 Es superadmin:', esSuperAdmin)
+      
+      // Construir la consulta base
       let query = supabase
         .from('horarios')
         .select(`
@@ -157,17 +177,44 @@ export default function GestionHorarios() {
           sala:salas(nombre),
           periodo:periodos(nombre)
         `)
-        .order('fecha')
       
-      // Si el usuario es admin y no superadmin, filtrar por las salas de las que es responsable
-      if (esAdmin && !esSuperAdmin && salasResponsable.length > 0) {
+      // NUEVA LÓGICA: Aplicar filtro más estricto
+      // Solo permitir ver todos los horarios si es superadmin O si explícitamente no tiene asignaciones específicas
+      const debeAplicarFiltro = esAdmin && !esSuperAdmin
+      
+      if (debeAplicarFiltro) {
         const salaIds = salasResponsable.map(sala => sala.id)
+        console.log('🔍 APLICANDO FILTRO OBLIGATORIO para admin. Salas permitidas:', salaIds)
+        
+        if (salaIds.length === 0) {
+          // Si no tiene salas asignadas, no debería ver ningún horario
+          console.log('⚠️ Admin sin salas asignadas - no cargando horarios')
+          setHorarios([])
+          setSalas([])
+          setPeriodos([])
+          setDatosInicializados(true)
+          return
+        }
+        
+        // APLICAR FILTRO AQUÍ - CRÍTICO
         query = query.in('sala_id', salaIds)
+        console.log('🎯 FILTRO APLICADO - Query ahora está limitada a salas:', salaIds)
+      } else {
+        console.log('👑 Usuario con acceso completo (superadmin) - sin filtros aplicados')
       }
 
+      // Aplicar ordenamiento al final
+      query = query.order('fecha')
+      
+      console.log('🚀 Ejecutando consulta de horarios...')
       const { data: horariosData, error: horariosError } = await query
 
-      if (horariosError) throw horariosError
+      if (horariosError) {
+        console.error('❌ Error en consulta de horarios:', horariosError)
+        throw horariosError
+      }
+
+      console.log('📅 Horarios cargados (ya filtrados):', horariosData?.length || 0)
 
       // Usar las salas de las que el usuario es responsable
       setSalas(salasResponsable)
@@ -183,10 +230,14 @@ export default function GestionHorarios() {
 
       if (periodosError) throw periodosError
 
-      setHorarios(horariosData)
+      // Establecer los horarios directamente sin filtrado adicional
+      setHorarios(horariosData || [])
       setPeriodos(periodosData)
+      
+      // Marcar que los datos están inicializados
+      setDatosInicializados(true)
     } catch (error) {
-      console.error('Error fetching data:', error)
+      console.error('💥 Error en fetchData:', error)
       toast({
         title: "Error",
         description: "No se pudieron cargar los datos",
@@ -198,10 +249,46 @@ export default function GestionHorarios() {
   }
 
   useEffect(() => {
-    if (!loadingSalas) {
+    // Solo ejecutar fetchData cuando las salas responsables ya se hayan cargado
+    console.log('🔄 useEffect triggered:', { 
+      userLoading,
+      loadingSalas, 
+      salasResponsableLength: salasResponsable.length, 
+      esAdmin, 
+      esSuperAdmin,
+      fetchDataExecuted: fetchDataExecuted.current,
+      datosInicializados
+    })
+    
+    // Condiciones para ejecutar fetchData:
+    // 1. Usuario completamente cargado (no en loading)
+    // 2. No estar cargando salas responsables
+    // 3. No haber ejecutado fetchData antes
+    // 4. No tener datos ya inicializados
+    if (!userLoading && !loadingSalas && !fetchDataExecuted.current && !datosInicializados) {
+      console.log('✅ PRIMERA Y ÚNICA ejecución de fetchData')
+      fetchDataExecuted.current = true
       fetchData()
+    } else {
+      const motivos = []
+      if (userLoading) motivos.push('cargando usuario')
+      if (loadingSalas) motivos.push('cargando salas')
+      if (fetchDataExecuted.current) motivos.push('fetchData ya ejecutado')
+      if (datosInicializados) motivos.push('datos ya inicializados')
+      
+      console.log('⏭️ Skipping fetchData:', motivos.join(', '))
     }
-  }, [loadingSalas, salasResponsable])
+  }, [userLoading, loadingSalas, salasResponsable, esAdmin, esSuperAdmin, datosInicializados])
+
+  // Resetear cuando cambie el usuario o sus permisos
+  useEffect(() => {
+    console.log('🔄 Usuario/permisos cambiaron - reseteando estado')
+    fetchDataExecuted.current = false
+    setDatosInicializados(false)
+    setHorarios([])
+    setSalas([])
+    setPeriodos([])
+  }, [esAdmin, esSuperAdmin])
 
   const verificarSuperposicion = async (sala_id: number, fecha: string, hora_inicio: string, hora_fin: string) => {
     const { data, error } = await supabase
@@ -383,6 +470,8 @@ export default function GestionHorarios() {
       })
       setPeriodosSeleccionados([])
       setCreacionMultiple(false)
+      // Resetear el flag para permitir una nueva carga después de crear
+      fetchDataExecuted.current = false
       fetchData()
     } catch (error) {
       console.error('Error:', error)
@@ -434,6 +523,8 @@ export default function GestionHorarios() {
         description: "El horario ha sido eliminado exitosamente",
       })
 
+      // Resetear el flag para permitir una nueva carga después de eliminar
+      fetchDataExecuted.current = false
       fetchData()
     } catch (error) {
       console.error('Error:', error)
@@ -445,8 +536,19 @@ export default function GestionHorarios() {
     }
   }
 
-  if (loading || loadingSalas) {
-    return <div className="container mx-auto px-4 py-8">Cargando...</div>
+  if (userLoading || loading || loadingSalas || !datosInicializados) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex justify-center items-center min-h-[400px]">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900" />
+          <span className="ml-3 text-gray-600">
+            {userLoading ? 'Cargando usuario...' : 
+             loadingSalas ? 'Cargando salas...' : 
+             'Cargando horarios...'}
+          </span>
+        </div>
+      </div>
+    )
   }
 
   return (

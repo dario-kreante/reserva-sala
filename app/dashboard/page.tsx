@@ -9,6 +9,7 @@ import Link from 'next/link'
 import { Download, BarChart3, PieChart as PieChartIcon, Users } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import * as XLSX from 'xlsx'
+import { toast } from "@/components/ui/use-toast"
 
 // Función para calcular la duración en horas entre dos horas
 const calcularDuracion = (horaInicio: string, horaFin: string): number => {
@@ -161,7 +162,7 @@ export default function Dashboard() {
   const COLORS = ['#00C49F', '#0088FE', '#FFBB28', '#FF8042', '#8884D8']
 
   const exportarExcel = () => {
-    // Preparar datos para el reporte
+    // Preparar datos para el reporte con información más completa
     const datosReservas = reservas.map(reserva => {
       const duracion = calcularDuracion(reserva.hora_inicio, reserva.hora_fin)
       
@@ -173,33 +174,119 @@ export default function Dashboard() {
         day: '2-digit'
       });
       
+      // Formatear fechas de creación y actualización
+      const fechaCreacion = new Date(reserva.created_at || '').toLocaleDateString('es-ES', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      
+      const fechaActualizacion = new Date(reserva.ultima_actualizacion || '').toLocaleDateString('es-ES', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
       return {
         'ID': reserva.id,
-        'Fecha': fechaFormateada, // Usar la fecha formateada
+        'Fecha de Reserva': fechaFormateada,
         'Sala': reserva.sala?.nombre || 'Sin asignar',
         'Tipo de Sala': reserva.sala?.tipo || 'N/A',
+        'Capacidad Sala': reserva.sala?.capacidad || 'N/A',
+        'Centro': reserva.sala?.centro || 'N/A',
         'Hora Inicio': reserva.hora_inicio,
         'Hora Fin': reserva.hora_fin,
         'Duración (horas)': duracion.toFixed(2),
         'Estado': reserva.estado,
-        'Urgente': reserva.es_urgente ? 'Sí' : 'No',
+        'Es Urgente': reserva.es_urgente ? 'Sí' : 'No',
         'Tipo Solicitante': reserva.es_externo ? 'Externo' : 'Interno',
         'Solicitante': reserva.es_externo 
-          ? reserva.solicitante_nombre_completo 
-          : `${reserva.usuario?.nombre || ''} ${reserva.usuario?.apellido || ''}`,
-        'Institución': reserva.institucion || 'N/A'
+          ? reserva.solicitante_nombre_completo || 'Sin nombre'
+          : `${reserva.usuario?.nombre || ''} ${reserva.usuario?.apellido || ''}`.trim() || 'Sin usuario',
+        'Email Solicitante': reserva.es_externo 
+          ? reserva.mail_externos || 'N/A'
+          : reserva.usuario?.email || 'N/A',
+        'Teléfono': reserva.telefono || 'N/A',
+        'Institución': reserva.institucion || (reserva.es_externo ? 'Sin especificar' : 'UTalca'),
+        'Rol Usuario': reserva.usuario?.rol || 'N/A',
+        'Departamento': reserva.usuario?.departamento || 'N/A',
+        'Es Reserva del Sistema': reserva.es_reserva_sistema ? 'Sí' : 'No',
+        'Módulo/Asignatura': reserva.nombre_modulo || 'N/A',
+        'Código Asignatura': reserva.codigo_asignatura || 'N/A',
+        'Sección': reserva.seccion || 'N/A',
+        'Profesor Responsable': reserva.profesor_responsable || 'N/A',
+        'Comentarios': reserva.comentario || 'Sin comentarios',
+        'Motivo de Rechazo': reserva.motivo_rechazo || (reserva.estado === 'rechazada' ? 'Sin motivo especificado' : 'N/A'),
+        'Fecha de Creación': fechaCreacion,
+        'Última Actualización': fechaActualizacion,
+        'Día de la Semana': fechaReserva.toLocaleDateString('es-ES', { weekday: 'long' }),
+        'Mes': fechaReserva.toLocaleDateString('es-ES', { month: 'long' }),
+        'Año': fechaReserva.getFullYear()
       }
     })
 
-    // Crear hoja de cálculo
+    // Crear estadísticas resumen para incluir en una hoja separada
+    const estadisticas = [
+      { Métrica: 'Total de Reservas', Valor: reservas.length },
+      { Métrica: 'Reservas Pendientes', Valor: reservas.filter(r => r.estado === 'pendiente').length },
+      { Métrica: 'Reservas Aprobadas', Valor: reservas.filter(r => r.estado === 'aprobada').length },
+      { Métrica: 'Reservas Rechazadas', Valor: reservas.filter(r => r.estado === 'rechazada').length },
+      { Métrica: 'Reservas Canceladas', Valor: reservas.filter(r => r.estado === 'cancelada').length },
+      { Métrica: 'Reservas Urgentes', Valor: reservas.filter(r => r.es_urgente).length },
+      { Métrica: 'Reservas Externas', Valor: reservas.filter(r => r.es_externo).length },
+      { Métrica: 'Reservas del Sistema', Valor: reservas.filter(r => r.es_reserva_sistema).length },
+      { Métrica: 'Horas Totales Reservadas', Valor: reservas.reduce((total, r) => total + calcularDuracion(r.hora_inicio, r.hora_fin), 0).toFixed(2) },
+      { Métrica: 'Promedio de Duración (horas)', Valor: reservas.length > 0 ? (reservas.reduce((total, r) => total + calcularDuracion(r.hora_inicio, r.hora_fin), 0) / reservas.length).toFixed(2) : '0' }
+    ]
+
+    // Uso por sala
+    const usoPorSala = reservas.reduce((acc, reserva) => {
+      const nombreSala = reserva.sala?.nombre || 'Sin sala'
+      if (!acc[nombreSala]) {
+        acc[nombreSala] = { count: 0, horas: 0 }
+      }
+      acc[nombreSala].count += 1
+      acc[nombreSala].horas += calcularDuracion(reserva.hora_inicio, reserva.hora_fin)
+      return acc
+    }, {} as Record<string, { count: number; horas: number }>)
+
+    const datosSalas = Object.entries(usoPorSala).map(([sala, datos]) => ({
+      'Sala': sala,
+      'Número de Reservas': datos.count,
+      'Horas Totales': datos.horas.toFixed(2),
+      'Promedio Horas por Reserva': (datos.horas / datos.count).toFixed(2)
+    }))
+
+    // Crear libro de trabajo con múltiples hojas
     const wb = XLSX.utils.book_new()
-    const ws = XLSX.utils.json_to_sheet(datosReservas)
     
-    // Añadir hoja al libro
-    XLSX.utils.book_append_sheet(wb, ws, 'Reservas')
+    // Hoja principal con todas las reservas
+    const wsReservas = XLSX.utils.json_to_sheet(datosReservas)
+    XLSX.utils.book_append_sheet(wb, wsReservas, 'Reservas')
     
-    // Generar archivo y descargarlo
-    XLSX.writeFile(wb, `Reporte_Reservas_${new Date().toISOString().split('T')[0]}.xlsx`)
+    // Hoja de estadísticas
+    const wsEstadisticas = XLSX.utils.json_to_sheet(estadisticas)
+    XLSX.utils.book_append_sheet(wb, wsEstadisticas, 'Estadísticas')
+    
+    // Hoja de uso por sala
+    const wsSalas = XLSX.utils.json_to_sheet(datosSalas)
+    XLSX.utils.book_append_sheet(wb, wsSalas, 'Uso por Sala')
+    
+    // Generar archivo con nombre más descriptivo
+    const fechaHoy = new Date().toISOString().split('T')[0]
+    const nombreArchivo = `Reporte_Completo_Reservas_${fechaHoy}.xlsx`
+    
+    XLSX.writeFile(wb, nombreArchivo)
+    
+    // Mostrar mensaje de éxito
+    toast({
+      title: "Exportación exitosa",
+      description: `Se ha generado el archivo ${nombreArchivo} con ${reservas.length} reservas`,
+    })
   }
 
   return (

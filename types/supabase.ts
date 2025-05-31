@@ -49,6 +49,7 @@ export interface Database {
           mail_externos: string | null
           telefono: string | null
           comentario: string | null
+          motivo_rechazo: string | null
           nombre_modulo: string | null
           seccion: string | null
           codigo_asignatura: string | null
@@ -74,6 +75,7 @@ export interface Database {
           mail_externos?: string | null
           telefono?: string | null
           comentario?: string | null
+          motivo_rechazo?: string | null
           nombre_modulo?: string | null
           seccion?: string | null
           codigo_asignatura?: string | null
@@ -98,6 +100,7 @@ export interface Database {
           mail_externos?: string | null
           telefono?: string | null
           comentario?: string | null
+          motivo_rechazo?: string | null
           nombre_modulo?: string | null
           seccion?: string | null
           codigo_asignatura?: string | null

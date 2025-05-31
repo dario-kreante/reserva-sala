@@ -1,0 +1,55 @@
+<svg width="200" height="80" viewBox="0 0 200 80" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gradientUTalca" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e40af;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Fondo del logo -->
+  <rect width="200" height="80" fill="white" rx="4"/>
+  
+  <!-- Escudo principal -->
+  <g transform="translate(10, 10)">
+    <!-- Base del escudo -->
+    <path d="M15 5 L45 5 Q50 5 50 10 L50 45 Q50 55 40 60 L30 65 L20 60 Q10 55 10 45 L10 10 Q10 5 15 5 Z" 
+          fill="url(#gradientUTalca)" stroke="#1e40af" stroke-width="1"/>
+    
+    <!-- Elementos del escudo -->
+    <!-- Libro abierto (símbolo de conocimiento) -->
+    <rect x="20" y="15" width="20" height="12" fill="white" rx="1"/>
+    <line x1="30" y1="15" x2="30" y2="27" stroke="#1e40af" stroke-width="1"/>
+    <line x1="22" y1="18" x2="28" y2="18" stroke="#1e40af" stroke-width="0.5"/>
+    <line x1="22" y1="20" x2="28" y2="20" stroke="#1e40af" stroke-width="0.5"/>
+    <line x1="32" y1="18" x2="38" y2="18" stroke="#1e40af" stroke-width="0.5"/>
+    <line x1="32" y1="20" x2="38" y2="20" stroke="#1e40af" stroke-width="0.5"/>
+    
+    <!-- Estrella (excelencia académica) -->
+    <polygon points="30,35 32,40 37,40 33,43 35,48 30,45 25,48 27,43 23,40 28,40" 
+             fill="white" stroke="#1e40af" stroke-width="0.5"/>
+  </g>
+  
+  <!-- Texto Universidad de Talca -->
+  <g transform="translate(70, 20)">
+    <!-- UNIVERSIDAD -->
+    <text x="0" y="15" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#1e40af">
+      UNIVERSIDAD
+    </text>
+    <text x="0" y="30" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#1e40af">
+      DE TALCA
+    </text>
+    
+    <!-- Facultad de Psicología -->
+    <text x="0" y="45" font-family="Arial, sans-serif" font-size="9" font-weight="normal" fill="#6b7280">
+      Facultad de Psicología
+    </text>
+    
+    <!-- Línea decorativa -->
+    <line x1="0" y1="50" x2="100" y2="50" stroke="#dc2626" stroke-width="2"/>
+  </g>
+  
+  <!-- Año de fundación -->
+  <text x="170" y="70" font-family="Arial, sans-serif" font-size="8" font-weight="normal" fill="#9ca3af" text-anchor="middle">
+    1981
+  </text>
+</svg> 

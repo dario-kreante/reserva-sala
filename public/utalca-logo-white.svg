@@ -1,0 +1,41 @@
+<svg width="200" height="60" viewBox="0 0 200 60" xmlns="http://www.w3.org/2000/svg">
+  <!-- Escudo simplificado para sidebar -->
+  <g transform="translate(10, 5)">
+    <!-- Base del escudo -->
+    <path d="M10 5 L35 5 Q40 5 40 10 L40 35 Q40 45 30 50 L25 52 L20 50 Q10 45 10 35 L10 10 Q10 5 10 5 Z" 
+          fill="white" stroke="white" stroke-width="1"/>
+    
+    <!-- Libro abierto -->
+    <rect x="18" y="15" width="14" height="8" fill="rgba(30, 64, 175, 0.8)" rx="1"/>
+    <line x1="25" y1="15" x2="25" y2="23" stroke="white" stroke-width="1"/>
+    <line x1="20" y1="17" x2="23" y2="17" stroke="white" stroke-width="0.5"/>
+    <line x1="20" y1="19" x2="23" y2="19" stroke="white" stroke-width="0.5"/>
+    <line x1="27" y1="17" x2="30" y2="17" stroke="white" stroke-width="0.5"/>
+    <line x1="27" y1="19" x2="30" y2="19" stroke="white" stroke-width="0.5"/>
+    
+    <!-- Estrella -->
+    <polygon points="25,28 26,32 30,32 27,35 28,39 25,37 22,39 23,35 20,32 24,32" 
+             fill="rgba(30, 64, 175, 0.8)"/>
+  </g>
+  
+  <!-- Texto Universidad de Talca -->
+  <g transform="translate(55, 15)">
+    <!-- UNIVERSIDAD DE TALCA -->
+    <text x="0" y="12" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="white">
+      UNIVERSIDAD DE TALCA
+    </text>
+    
+    <!-- Facultad de Psicología -->
+    <text x="0" y="28" font-family="Arial, sans-serif" font-size="7" font-weight="normal" fill="rgba(255,255,255,0.9)">
+      Facultad de Psicología
+    </text>
+    
+    <!-- Línea decorativa -->
+    <line x1="0" y1="35" x2="80" y2="35" stroke="rgba(220, 38, 38, 0.8)" stroke-width="2"/>
+  </g>
+  
+  <!-- Año de fundación -->
+  <text x="170" y="50" font-family="Arial, sans-serif" font-size="7" font-weight="normal" fill="rgba(255,255,255,0.7)" text-anchor="middle">
+    Est. 1981
+  </text>
+</svg> 

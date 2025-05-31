@@ -74,7 +74,7 @@ export default function Aprobaciones() {
   // Estado para el diálogo de rechazo con comentario
   const [dialogoRechazoAbierto, setDialogoRechazoAbierto] = useState(false)
   const [reservaIdParaRechazar, setReservaIdParaRechazar] = useState<string | null>(null)
-  const [comentarioRechazo, setComentarioRechazo] = useState('')
+  const [motivoRechazo, setMotivoRechazo] = useState('')
 
   // Añadir un estado para controlar la inicialización
   const [initialized, setInitialized] = useState(false)
@@ -306,7 +306,7 @@ export default function Aprobaciones() {
     )
   }
 
-  const handleCambioEstado = async (reservaId: string, nuevoEstado: 'aprobada' | 'rechazada', comentario?: string) => {
+  const handleCambioEstado = async (reservaId: string, nuevoEstado: 'aprobada' | 'rechazada', motivoRechazo?: string) => {
     try {
       // Verificar si el usuario tiene permiso para cambiar el estado de esta reserva
       const reserva = reservas.find(r => r.id === reservaId)
@@ -336,9 +336,9 @@ export default function Aprobaciones() {
 
       const updateData: any = { estado: nuevoEstado }
       
-      // Si hay comentario, añadirlo a los datos de actualización
-      if (comentario && nuevoEstado === 'rechazada') {
-        updateData.comentario = comentario
+      // Si hay motivo de rechazo, añadirlo a los datos de actualización
+      if (motivoRechazo && nuevoEstado === 'rechazada') {
+        updateData.motivo_rechazo = motivoRechazo
       }
 
       const { error } = await supabase
@@ -367,27 +367,27 @@ export default function Aprobaciones() {
   // Función para manejar el rechazo con comentario
   const handleRechazarConComentario = (reservaId: string) => {
     setReservaIdParaRechazar(reservaId)
-    setComentarioRechazo('')
+    setMotivoRechazo('')
     setDialogoRechazoAbierto(true)
   }
 
   // Función para confirmar el rechazo con comentario
   const confirmarRechazo = () => {
-    // Validar que el comentario no esté vacío
-    if (!comentarioRechazo || comentarioRechazo.trim() === '') {
+    // Validar que el motivo no esté vacío
+    if (!motivoRechazo || motivoRechazo.trim() === '') {
       toast({
         title: "Error",
         description: "Por favor, ingresa un motivo para rechazar la reserva.",
         variant: "destructive",
       });
-      return; // Detener si no hay comentario
+      return; // Detener si no hay motivo
     }
     
     if (reservaIdParaRechazar) {
-      handleCambioEstado(reservaIdParaRechazar, 'rechazada', comentarioRechazo)
+      handleCambioEstado(reservaIdParaRechazar, 'rechazada', motivoRechazo)
       setDialogoRechazoAbierto(false)
       setReservaIdParaRechazar(null)
-      setComentarioRechazo('')
+      setMotivoRechazo('')
     }
   }
 
@@ -695,8 +695,8 @@ export default function Aprobaciones() {
           </DialogHeader>
           <Textarea
             placeholder="Motivo del rechazo"
-            value={comentarioRechazo}
-            onChange={(e) => setComentarioRechazo(e.target.value)}
+            value={motivoRechazo}
+            onChange={(e) => setMotivoRechazo(e.target.value)}
             className="min-h-[100px]"
           />
           <DialogFooter>
@@ -706,7 +706,7 @@ export default function Aprobaciones() {
             <Button 
               variant="destructive" 
               onClick={confirmarRechazo}
-              disabled={!comentarioRechazo || comentarioRechazo.trim() === ''} // Deshabilitar si no hay comentario
+              disabled={!motivoRechazo || motivoRechazo.trim() === ''} // Deshabilitar si no hay motivo
             >
               Rechazar Reserva
             </Button>

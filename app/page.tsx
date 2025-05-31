@@ -45,6 +45,7 @@ import * as XLSX from 'xlsx'
 import Link from "next/link"
 import { esFechaValida, validarHorarioConsistente } from "./utils/horarioValidation"
 import { Textarea } from "@/components/ui/textarea"
+import { useUser } from "@/hooks/useUser"
 
 // Función para calcular la duración en horas entre dos horas
 const calcularDuracion = (horaInicio: string, horaFin: string): number => {
@@ -99,8 +100,20 @@ export default function Home() {
   const [dialogoRechazoAbierto, setDialogoRechazoAbierto] = useState(false)
   const [comentarioRechazo, setComentarioRechazo] = useState('')
 
+  // Agregar hook de usuario para debug
+  const { user } = useUser()
+
+  // Debug del usuario autenticado
+  useEffect(() => {
+    console.log('🧑‍💻 Dashboard - Usuario autenticado:', user)
+    console.log('🧑‍💻 Dashboard - Rol del usuario:', user?.rol)
+    console.log('🧑‍💻 Dashboard - ID del usuario:', user?.id)
+  }, [user])
+
   useEffect(() => {
     if (!loadingReservasData) {
+      console.log('📊 Dashboard - Reservas recibidas:', reservasData?.length || 0)
+      console.log('📊 Dashboard - Primeras 3 reservas:', reservasData?.slice(0, 3))
       setReservas(reservasData)
       setLoadingReservas(false)
     }
@@ -157,7 +170,7 @@ export default function Home() {
         return fechaNormalizada === hoy;
       }).length;
       
-      // Calcular usuarios activos (con al menos una reserva)
+      // Calcular usuarios con reservas (usuarios que han realizado al menos una reserva en el período)
       const usuariosActivos = new Set(reservas.filter(r => r.usuario?.id).map(r => r.usuario!.id)).size;
       
       // Distribución de roles
@@ -404,9 +417,16 @@ export default function Home() {
     });
     
     // Log para depuración
-    console.log(`Total reservas filtradas para calendario: ${reservasFiltradas.length}`);
+    console.log(`📅 Calendario - Total reservas en estado: ${reservas.length}`);
+    console.log(`📅 Calendario - Total reservas filtradas: ${reservasFiltradas.length}`);
+    console.log(`📅 Calendario - Filtros aplicados: sala=${salaSeleccionada}, estado=${estadoFiltro}, usuario=${usuarioFiltro}`);
+    console.log(`📅 Calendario - Estados de reservas:`, reservas.reduce((acc, r) => {
+      acc[r.estado] = (acc[r.estado] || 0) + 1;
+      return acc;
+    }, {}));
+    console.log(`📅 Calendario - Fechas de reservas (muestra):`, reservas.slice(0, 5).map(r => r.fecha));
     
-    return reservasFiltradas.map(reserva => {
+    const eventos = reservasFiltradas.map(reserva => {
       // Normalizar el formato de fecha para asegurar consistencia
       let fechaEvento: string;
       
@@ -490,6 +510,11 @@ export default function Home() {
         }
       };
     });
+    
+    console.log(`📅 Calendario - Eventos generados:`, eventos.length);
+    console.log(`📅 Calendario - Primeros 3 eventos:`, eventos.slice(0, 3));
+    
+    return eventos;
   };
 
   const handleAprobarReserva = async (reservaId: number) => {
@@ -540,7 +565,7 @@ export default function Home() {
         .from('reservas')
         .update({ 
           estado: 'rechazada',
-          comentario: comentarioRechazo || null
+          motivo_rechazo: comentarioRechazo || null
         })
         .eq('id', reservaId)
 
@@ -653,7 +678,7 @@ export default function Home() {
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalUsuarios}</div>
             <p className="text-xs text-muted-foreground">
-              {stats.usuariosActivos} activos
+              {stats.usuariosActivos} con reservas
             </p>
           </CardContent>
         </Card>
@@ -714,7 +739,12 @@ export default function Home() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis 
                     dataKey="fecha" 
-                    tickFormatter={(value) => new Date(value).toLocaleDateString('es-ES', { weekday: 'short' })}
+                    tickFormatter={(value) => {
+                      // Crear la fecha agregando tiempo local para evitar problemas de zona horaria
+                      const [year, month, day] = value.split('-').map(Number);
+                      const fecha = new Date(year, month - 1, day);
+                      return fecha.toLocaleDateString('es-ES', { weekday: 'short' });
+                    }}
                   />
                   <YAxis />
                   <Tooltip />
@@ -798,11 +828,19 @@ export default function Home() {
               
               <div className="flex flex-col gap-2">
                 <h3 className="text-sm font-medium">Salas más utilizadas</h3>
-                <div className="text-sm">
+                <p className="text-xs text-muted-foreground mb-2">
+                  % de tiempo ocupado vs. disponible en el período
+                </p>
+                <div className="text-sm space-y-1">
                   {stats.tasaUsoSalas.slice(0, 3).map((sala, index) => (
-                    <div key={index} className="flex justify-between">
-                      <span>{sala.name}</span>
+                    <div key={index} className="flex justify-between items-center">
+                      <span className="truncate flex-1 mr-2" title={sala.name}>{sala.name}</span>
+                      <div className="flex items-center gap-1">
                       <span className="font-medium">{sala.porcentaje.toFixed(0)}%</span>
+                        <span className="text-xs text-muted-foreground">
+                          ({sala.horas.toFixed(1)}h)
+                        </span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -814,13 +852,22 @@ export default function Home() {
               </div>
               
               <div className="flex flex-col gap-2">
-                <h3 className="text-sm font-medium">Usuarios activos</h3>
+                <h3 className="text-sm font-medium">Usuarios con reservas</h3>
+                <p className="text-xs text-muted-foreground mb-1">
+                  Usuarios que han realizado al menos una reserva
+                </p>
                 <div className="text-2xl font-bold">{stats.usuariosActivos}</div>
+                <div className="text-xs text-muted-foreground">
+                  de {stats.totalUsuarios} usuarios totales
+                </div>
+                {/* Solo mostrar el botón si el usuario es superadmin */}
+                {user?.rol === 'superadmin' && (
                 <Button variant="outline" size="sm" asChild>
                   <Link href="/usuarios">
                     Gestionar usuarios
                   </Link>
                 </Button>
+                )}
               </div>
             </div>
           </CardContent>
@@ -1074,51 +1121,52 @@ export default function Home() {
               {/* Mostrar información académica para reservas del sistema o comentario para reservas manuales */}
               {reservaSeleccionada.es_reserva_sistema ? (
                 // Información académica para reservas del sistema
-                (reservaSeleccionada.nombre_modulo || reservaSeleccionada.profesor_responsable) && (
-                  <div className="grid gap-4 border-t pt-4">
-                    {reservaSeleccionada.nombre_modulo && (
-                      <div className="grid grid-cols-[auto_1fr] items-start gap-4">
-                        <span className="text-muted-foreground flex items-center gap-2">
-                          <BookOpen className="h-4 w-4" />
-                          Módulo:
-                        </span>
-                        <p className="text-sm font-medium">{reservaSeleccionada.nombre_modulo}</p>
-                      </div>
-                    )}
-                    {reservaSeleccionada.profesor_responsable && (
-                      <div className="grid grid-cols-[auto_1fr] items-start gap-4">
-                        <span className="text-muted-foreground flex items-center gap-2">
-                          <GraduationCap className="h-4 w-4" />
-                          Profesor:
-                        </span>
-                        <p className="text-sm font-medium">{reservaSeleccionada.profesor_responsable}</p>
-                      </div>
-                    )}
-                    {reservaSeleccionada.descripcion && (
-                      <div className="grid grid-cols-[auto_1fr] items-start gap-4">
-                        <span className="text-muted-foreground flex items-center gap-2">
-                          <FileText className="h-4 w-4" />
-                          Descripción:
-                        </span>
-                        <p className="text-sm">{reservaSeleccionada.descripcion}</p>
-                      </div>
-                    )}
-                  </div>
-                )
+                <>
+                  {reservaSeleccionada.nombre_modulo && (
+                    <div className="grid grid-cols-[auto_1fr] items-start gap-4 border-t pt-4">
+                      <span className="text-muted-foreground flex items-center gap-2">
+                        <BookOpen className="h-4 w-4" />
+                        Módulo:
+                      </span>
+                      <p className="text-sm font-medium">{reservaSeleccionada.nombre_modulo}</p>
+                    </div>
+                  )}
+                  
+                  {reservaSeleccionada.profesor_responsable && (
+                    <div className="grid grid-cols-[auto_1fr] items-start gap-4">
+                      <span className="text-muted-foreground flex items-center gap-2">
+                        <GraduationCap className="h-4 w-4" />
+                        Profesor:
+                      </span>
+                      <p className="text-sm">{reservaSeleccionada.profesor_responsable}</p>
+                    </div>
+                  )}
+                </>
               ) : (
                 // Comentario para reservas manuales
                 reservaSeleccionada.comentario && (
-                  <div className="grid grid-cols-[auto_1fr] items-start gap-4 border-t pt-4">
+                 <div className="grid grid-cols-[auto_1fr] items-start gap-4 border-t pt-4">
                     <span className="text-muted-foreground flex items-center gap-2">
                       <MessageSquare className="h-4 w-4" />
                       Comentario:
                     </span>
-                    <p className="text-sm">{reservaSeleccionada.comentario}</p>
-                  </div>
+                  <p className="text-sm">{reservaSeleccionada.comentario}</p>
+                </div>
                 )
               )}
               
-              <div className={`grid grid-cols-[auto_1fr] items-center gap-4 ${!(reservaSeleccionada.es_reserva_sistema ? (reservaSeleccionada.nombre_modulo || reservaSeleccionada.profesor_responsable) : reservaSeleccionada.comentario) ? 'border-t pt-4' : ''}`}>
+              {/* Mostrar motivo de rechazo si existe */}
+              {reservaSeleccionada.estado === 'rechazada' && reservaSeleccionada.motivo_rechazo && (
+                <div className="grid grid-cols-[auto_1fr] items-start gap-4 border-t pt-4">
+                  <span className="text-muted-foreground flex items-center gap-2">
+                    <X className="h-4 w-4" />
+                    Motivo de rechazo:
+                  </span>
+                  <p className="text-sm text-red-600">{reservaSeleccionada.motivo_rechazo}</p>
+                </div>
+              )}
+              
+              <div className={`grid grid-cols-[auto_1fr] items-center gap-4 ${!(reservaSeleccionada.es_reserva_sistema ? (reservaSeleccionada.nombre_modulo || reservaSeleccionada.profesor_responsable) : reservaSeleccionada.comentario) && !(reservaSeleccionada.estado === 'rechazada' && reservaSeleccionada.motivo_rechazo) ? 'border-t pt-4' : ''}`}>
                 <span className="text-muted-foreground flex items-center gap-2">
                   <Tag className="h-4 w-4" />
                   Estado:

@@ -1,0 +1,31 @@
+<svg width="192" height="192" viewBox="0 0 192 192" xmlns="http://www.w3.org/2000/svg">
+  <!-- Fondo del icono -->
+  <rect width="192" height="192" fill="#1e40af" rx="24"/>
+  
+  <!-- Icono de sala/edificio principal -->
+  <rect x="32" y="48" width="128" height="96" fill="#ffffff" stroke="#1e40af" stroke-width="3" rx="8"/>
+  
+  <!-- Divisiones internas de las salas -->
+  <line x1="32" y1="80" x2="160" y2="80" stroke="#1e40af" stroke-width="3"/>
+  <line x1="32" y1="112" x2="160" y2="112" stroke="#1e40af" stroke-width="3"/>
+  <line x1="96" y1="48" x2="96" y2="144" stroke="#1e40af" stroke-width="3"/>
+  
+  <!-- Iconos de reserva en cada sala -->
+  <circle cx="64" cy="64" r="8" fill="#1e40af"/>
+  <circle cx="128" cy="64" r="8" fill="#1e40af"/>
+  <circle cx="64" cy="96" r="8" fill="#1e40af"/>
+  <circle cx="128" cy="96" r="8" fill="#1e40af"/>
+  <circle cx="64" cy="128" r="8" fill="#1e40af"/>
+  <circle cx="128" cy="128" r="8" fill="#1e40af"/>
+  
+  <!-- Indicador de reserva activa -->
+  <rect x="140" y="24" width="32" height="20" fill="#10b981" rx="4"/>
+  <text x="156" y="38" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="white" text-anchor="middle">R</text>
+  
+  <!-- Elementos decorativos -->
+  <rect x="0" y="0" width="192" height="16" fill="#3b82f6"/>
+  <rect x="0" y="176" width="192" height="16" fill="#3b82f6"/>
+  
+  <!-- Texto institucional -->
+  <text x="96" y="170" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="white" text-anchor="middle">RESERVA SALAS</text>
+</svg> 
