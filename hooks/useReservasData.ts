@@ -37,6 +37,10 @@ interface ReservaResponse {
     rol: string
   } | null
   comentario: string | null
+  // Campos académicos para reservas del sistema
+  nombre_modulo: string | null
+  profesor_responsable: string | null
+  descripcion: string | null
 }
 
 interface ReservaDB {
@@ -85,6 +89,9 @@ export function useReservasData() {
           solicitante_nombre_completo,
           institucion,
           comentario,
+          nombre_modulo,
+          profesor_responsable,
+          descripcion,
           sala:salas (
             id,
             nombre,
