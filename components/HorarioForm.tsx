@@ -27,8 +27,6 @@ export interface HorarioFormData {
   recurrencia: 'unico' | 'semanal' | 'mensual'
   // Campos descriptivos
   nombre_modulo: string
-  seccion: string
-  codigo_asignatura: string
   profesor_responsable: string
   descripcion: string
   activo: boolean

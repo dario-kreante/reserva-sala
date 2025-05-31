@@ -71,8 +71,6 @@ export default function GestionHorarios() {
     recurrencia: '',
     // Campos descriptivos para reservas recurrentes
     nombre_modulo: '',
-    seccion: '',
-    codigo_asignatura: '',
     profesor_responsable: '',
     descripcion: '',
   })
@@ -98,14 +96,12 @@ export default function GestionHorarios() {
       hora_fin, 
       recurrencia,
       nombre_modulo,
-      codigo_asignatura,
       profesor_responsable
     } = nuevoHorario
     
     // Campos descriptivos obligatorios
     const camposDescriptivosValidos = Boolean(
       nombre_modulo.trim() && 
-      codigo_asignatura.trim() && 
       profesor_responsable.trim()
     )
     
@@ -256,8 +252,6 @@ export default function GestionHorarios() {
             recurrencia,
             // Campos descriptivos
             nombre_modulo: nuevoHorario.nombre_modulo,
-            seccion: nuevoHorario.seccion,
-            codigo_asignatura: nuevoHorario.codigo_asignatura,
             profesor_responsable: nuevoHorario.profesor_responsable,
             descripcion: nuevoHorario.descripcion,
             activo: true
@@ -331,8 +325,6 @@ export default function GestionHorarios() {
           recurrencia,
           // Campos descriptivos
           nombre_modulo: nuevoHorario.nombre_modulo,
-          seccion: nuevoHorario.seccion,
-          codigo_asignatura: nuevoHorario.codigo_asignatura,
           profesor_responsable: nuevoHorario.profesor_responsable,
           descripcion: nuevoHorario.descripcion,
           activo: true
@@ -386,8 +378,6 @@ export default function GestionHorarios() {
         recurrencia: '',
         // Campos descriptivos para reservas recurrentes
         nombre_modulo: '',
-        seccion: '',
-        codigo_asignatura: '',
         profesor_responsable: '',
         descripcion: '',
       })
@@ -611,26 +601,7 @@ export default function GestionHorarios() {
                   <Label className="text-sm font-semibold">Información Académica</Label>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="codigo_asignatura">Código Asignatura *</Label>
-                    <Input
-                      id="codigo_asignatura"
-                      value={nuevoHorario.codigo_asignatura}
-                      onChange={(e) => setNuevoHorario(prev => ({ ...prev, codigo_asignatura: e.target.value }))}
-                      placeholder="ej: PSI101, MAT201"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="seccion">Sección</Label>
-                    <Input
-                      id="seccion"
-                      value={nuevoHorario.seccion}
-                      onChange={(e) => setNuevoHorario(prev => ({ ...prev, seccion: e.target.value }))}
-                      placeholder="ej: A, B, 01"
-                    />
-                  </div>
-                </div>
+
                 
                 <div>
                   <Label htmlFor="nombre_modulo">Nombre del Módulo/Asignatura *</Label>

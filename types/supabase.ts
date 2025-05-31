@@ -178,8 +178,6 @@ export type HorarioConDescripcion = Database['public']['Tables']['horarios']['Ro
 // Función auxiliar para generar título descriptivo en el frontend
 export function generarTituloReserva(reserva: {
   nombre_modulo?: string | null
-  seccion?: string | null
-  codigo_asignatura?: string | null
   profesor_responsable?: string | null
   es_reserva_sistema?: boolean
 }): string {
@@ -189,16 +187,8 @@ export function generarTituloReserva(reserva: {
 
   let titulo = ''
   
-  if (reserva.codigo_asignatura) {
-    titulo = reserva.codigo_asignatura
-  }
-  
   if (reserva.nombre_modulo) {
-    titulo = titulo ? `${titulo} - ${reserva.nombre_modulo}` : reserva.nombre_modulo
-  }
-  
-  if (reserva.seccion) {
-    titulo = titulo ? `${titulo} (Sección ${reserva.seccion})` : `Sección ${reserva.seccion}`
+    titulo = reserva.nombre_modulo
   }
   
   if (reserva.profesor_responsable) {

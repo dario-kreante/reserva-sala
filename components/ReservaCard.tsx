@@ -73,26 +73,12 @@ export function ReservaCard({
             </CardTitle>
             
             {/* Información académica para reservas del sistema */}
-            {reserva.es_reserva_sistema && (
+            {reserva.es_reserva_sistema && reserva.profesor_responsable && (
               <div className="flex flex-wrap gap-2 mb-2">
-                {reserva.codigo_asignatura && (
-                  <Badge variant="outline" className="text-xs">
-                    <BookOpen className="w-3 h-3 mr-1" />
-                    {reserva.codigo_asignatura}
-                  </Badge>
-                )}
-                {reserva.seccion && (
-                  <Badge variant="outline" className="text-xs">
-                    <Users className="w-3 h-3 mr-1" />
-                    Sección {reserva.seccion}
-                  </Badge>
-                )}
-                {reserva.profesor_responsable && (
-                  <Badge variant="outline" className="text-xs">
-                    <GraduationCap className="w-3 h-3 mr-1" />
-                    {reserva.profesor_responsable}
-                  </Badge>
-                )}
+                <Badge variant="outline" className="text-xs">
+                  <GraduationCap className="w-3 h-3 mr-1" />
+                  {reserva.profesor_responsable}
+                </Badge>
               </div>
             )}
           </div>
