@@ -590,38 +590,148 @@ export default function Home() {
   }
 
   const exportarExcel = () => {
-    // Preparar datos para el reporte
+    // Preparar datos para el reporte con información más completa
     const datosReservas = reservas
       .filter(r => r.usuario?.id !== '4a8794b5-139a-4d5d-a9da-dc2873665ca9')
       .map(reserva => {
         const duracion = calcularDuracion(reserva.hora_inicio, reserva.hora_fin)
+        
+        // Formatear la fecha de reserva correctamente
+        const fechaReserva = new Date(reserva.fecha);
+        const fechaFormateada = fechaReserva.toLocaleDateString('es-ES', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        });
+        
+        // Formatear fechas de creación y actualización
+        const fechaCreacion = reserva.created_at ? new Date(reserva.created_at).toLocaleDateString('es-ES', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        }) : 'N/A';
+        
+        const fechaActualizacion = reserva.ultima_actualizacion ? new Date(reserva.ultima_actualizacion).toLocaleDateString('es-ES', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        }) : 'N/A';
+
+        // Calcular tiempo de respuesta (días entre creación y aprobación/rechazo)
+        const tiempoRespuesta = reserva.created_at && reserva.ultima_actualizacion && 
+          reserva.estado !== 'pendiente' ? 
+          Math.ceil((new Date(reserva.ultima_actualizacion).getTime() - new Date(reserva.created_at).getTime()) / (1000 * 60 * 60 * 24)) : 'N/A';
+
+        // Determinar franja horaria
+        const horaInicio = parseInt(reserva.hora_inicio.split(':')[0]);
+        let franjaHoraria = '';
+        if (horaInicio >= 8 && horaInicio < 12) {
+          franjaHoraria = 'Mañana';
+        } else if (horaInicio >= 12 && horaInicio < 18) {
+          franjaHoraria = 'Tarde';
+        } else {
+          franjaHoraria = 'Noche';
+        }
+
+        // Determinar tipo de uso académico
+        let tipoUsoAcademico = 'Otro';
+        if (reserva.es_reserva_sistema) {
+          tipoUsoAcademico = 'Clase Regular';
+        } else if (reserva.nombre_modulo || reserva.codigo_asignatura) {
+          tipoUsoAcademico = 'Actividad Académica';
+        } else if (reserva.es_externo) {
+          tipoUsoAcademico = 'Actividad Externa';
+        }
+
+        // Calcular días de anticipación de la reserva
+        const diasAnticipacion = reserva.created_at ? 
+          Math.max(0, Math.ceil((new Date(reserva.fecha).getTime() - new Date(reserva.created_at).getTime()) / (1000 * 60 * 60 * 24))) : 'N/A';
+
         return {
           'ID': reserva.id,
-          'Fecha': reserva.fecha,
+          'Fecha de Reserva': fechaFormateada,
           'Sala': reserva.sala?.nombre || 'Sin asignar',
           'Tipo de Sala': reserva.sala?.tipo || 'N/A',
+          'Capacidad Sala': reserva.sala?.capacidad || 'N/A',
+          'Centro': reserva.sala?.centro || 'N/A',
           'Hora Inicio': reserva.hora_inicio,
           'Hora Fin': reserva.hora_fin,
           'Duración (horas)': duracion.toFixed(2),
+          'Franja Horaria': franjaHoraria,
           'Estado': reserva.estado,
-          'Urgente': reserva.es_urgente ? 'Sí' : 'No',
+          'Es Urgente': reserva.es_urgente ? 'Sí' : 'No',
           'Tipo Solicitante': reserva.es_externo ? 'Externo' : 'Interno',
+          'Tipo de Uso Académico': tipoUsoAcademico,
           'Solicitante': reserva.es_externo 
-            ? reserva.solicitante_nombre_completo 
-            : `${reserva.usuario?.nombre || ''} ${reserva.usuario?.apellido || ''}`,
-          'Institución': reserva.institucion || 'N/A'
+            ? reserva.solicitante_nombre_completo || 'Sin nombre'
+            : `${reserva.usuario?.nombre || ''} ${reserva.usuario?.apellido || ''}`.trim() || 'Sin usuario',
+          'Email Solicitante': reserva.es_externo 
+            ? reserva.mail_externos || 'N/A'
+            : reserva.usuario?.email || 'N/A',
+          'Teléfono': reserva.telefono || 'N/A',
+          'Institución': reserva.institucion || (reserva.es_externo ? 'Sin especificar' : 'UTalca'),
+          'Rol Usuario': reserva.usuario?.rol || 'N/A',
+          'Departamento Usuario': reserva.usuario?.departamento || 'N/A',
+          'Es Reserva del Sistema': reserva.es_reserva_sistema ? 'Sí' : 'No',
+          'Módulo/Asignatura': reserva.nombre_modulo || 'N/A',
+          'Código Asignatura': reserva.codigo_asignatura || 'N/A',
+          'Sección': reserva.seccion || 'N/A',
+          'Profesor Responsable': reserva.profesor_responsable || 'N/A',
+          'Comentarios': reserva.comentario || 'Sin comentarios',
+          'Motivo de Rechazo': reserva.motivo_rechazo || (reserva.estado === 'rechazada' ? 'Sin motivo especificado' : 'N/A'),
+          'Fecha de Creación': fechaCreacion,
+          'Última Actualización': fechaActualizacion,
+          'Tiempo de Respuesta (días)': tiempoRespuesta,
+          'Días de Anticipación': diasAnticipacion,
+          'Día de la Semana': fechaReserva.toLocaleDateString('es-ES', { weekday: 'long' }),
+          'Mes': fechaReserva.toLocaleDateString('es-ES', { month: 'long' }),
+          'Año': fechaReserva.getFullYear(),
+          'Trimestre': Math.ceil((fechaReserva.getMonth() + 1) / 3),
+          'Semana del Año': Math.ceil(fechaReserva.getDate() / 7)
         }
       })
 
-    // Crear hoja de cálculo
+    // Crear estadísticas generales más detalladas
+    const reservasCompletas = reservas.filter(r => r.usuario?.id !== '4a8794b5-139a-4d5d-a9da-dc2873665ca9');
+    const totalHoras = reservasCompletas.reduce((total, r) => total + calcularDuracion(r.hora_inicio, r.hora_fin), 0);
+    const reservasAprobadas = reservasCompletas.filter(r => r.estado === 'aprobada');
+    const reservasRechazadas = reservasCompletas.filter(r => r.estado === 'rechazada');
+    const reservasUrgentes = reservasCompletas.filter(r => r.es_urgente);
+    const reservasExternas = reservasCompletas.filter(r => r.es_externo);
+    const reservasSistema = reservasCompletas.filter(r => r.es_reserva_sistema);
+
+    const estadisticas = [
+      { Métrica: 'Total de Reservas', Valor: reservasCompletas.length, Porcentaje: '100%' },
+      { Métrica: 'Reservas Pendientes', Valor: reservasCompletas.filter(r => r.estado === 'pendiente').length, Porcentaje: `${((reservasCompletas.filter(r => r.estado === 'pendiente').length / reservasCompletas.length) * 100).toFixed(1)}%` },
+      { Métrica: 'Reservas Aprobadas', Valor: reservasAprobadas.length, Porcentaje: `${((reservasAprobadas.length / reservasCompletas.length) * 100).toFixed(1)}%` },
+      { Métrica: 'Reservas Rechazadas', Valor: reservasRechazadas.length, Porcentaje: `${((reservasRechazadas.length / reservasCompletas.length) * 100).toFixed(1)}%` },
+      { Métrica: 'Reservas Urgentes', Valor: reservasUrgentes.length, Porcentaje: `${((reservasUrgentes.length / reservasCompletas.length) * 100).toFixed(1)}%` },
+      { Métrica: 'Reservas Externas', Valor: reservasExternas.length, Porcentaje: `${((reservasExternas.length / reservasCompletas.length) * 100).toFixed(1)}%` },
+      { Métrica: 'Reservas del Sistema', Valor: reservasSistema.length, Porcentaje: `${((reservasSistema.length / reservasCompletas.length) * 100).toFixed(1)}%` },
+      { Métrica: 'Horas Totales Reservadas', Valor: totalHoras.toFixed(2), Porcentaje: '' },
+      { Métrica: 'Promedio de Duración (horas)', Valor: reservasCompletas.length > 0 ? (totalHoras / reservasCompletas.length).toFixed(2) : '0', Porcentaje: '' }
+    ]
+
+    // Crear libro de trabajo con múltiples hojas
     const wb = XLSX.utils.book_new()
-    const ws = XLSX.utils.json_to_sheet(datosReservas)
     
-    // Añadir hoja al libro
-    XLSX.utils.book_append_sheet(wb, ws, 'Reservas')
+    // Hoja principal con todas las reservas
+    const wsReservas = XLSX.utils.json_to_sheet(datosReservas)
+    XLSX.utils.book_append_sheet(wb, wsReservas, 'Reservas Completas')
     
-    // Generar archivo y descargarlo
-    XLSX.writeFile(wb, `Reporte_Reservas_${new Date().toISOString().split('T')[0]}.xlsx`)
+    // Hoja de estadísticas generales
+    const wsEstadisticas = XLSX.utils.json_to_sheet(estadisticas)
+    XLSX.utils.book_append_sheet(wb, wsEstadisticas, 'Estadísticas Generales')
+    
+    // Generar archivo con nombre más descriptivo
+    const fechaHoy = new Date().toISOString().split('T')[0]
+    const nombreArchivo = `Reporte_Completo_Reservas_Institucional_${fechaHoy}.xlsx`
+    
+    XLSX.writeFile(wb, nombreArchivo)
   }
 
   if (loadingReservas || loadingUsuarios) {
@@ -816,9 +926,20 @@ export default function Home() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="flex flex-col gap-2">
-                <h3 className="text-sm font-medium">Reservas pendientes</h3>
-                <div className="text-2xl font-bold">{stats.reservasPendientes}</div>
+              {/* Reservas Pendientes */}
+              <div className="flex flex-col gap-3 p-4 rounded-lg border border-orange-200 bg-orange-50/50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-orange-600" />
+                    <h3 className="text-sm font-medium">Reservas pendientes</h3>
+                  </div>
+                  <div className="text-2xl font-bold text-orange-600">
+                    {stats.reservasPendientes}
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Requieren aprobación
+                </p>
                 <Button variant="outline" size="sm" asChild>
                   <Link href="/aprobaciones">
                     Ver pendientes
@@ -826,17 +947,21 @@ export default function Home() {
                 </Button>
               </div>
               
-              <div className="flex flex-col gap-2">
-                <h3 className="text-sm font-medium">Salas más utilizadas</h3>
-                <p className="text-xs text-muted-foreground mb-2">
+              {/* Salas más utilizadas */}
+              <div className="flex flex-col gap-3 p-4 rounded-lg border border-green-200 bg-green-50/50">
+                <div className="flex items-center gap-2">
+                  <Building className="h-4 w-4 text-green-600" />
+                  <h3 className="text-sm font-medium">Salas más utilizadas</h3>
+                </div>
+                <p className="text-xs text-muted-foreground">
                   % de tiempo ocupado vs. disponible en el período
                 </p>
-                <div className="text-sm space-y-1">
+                <div className="text-sm space-y-2">
                   {stats.tasaUsoSalas.slice(0, 3).map((sala, index) => (
-                    <div key={index} className="flex justify-between items-center">
-                      <span className="truncate flex-1 mr-2" title={sala.name}>{sala.name}</span>
+                    <div key={index} className="flex justify-between items-center p-2 rounded bg-white/80">
+                      <span className="truncate flex-1 mr-2 text-xs" title={sala.name}>{sala.name}</span>
                       <div className="flex items-center gap-1">
-                      <span className="font-medium">{sala.porcentaje.toFixed(0)}%</span>
+                        <span className="font-medium text-green-700">{sala.porcentaje.toFixed(0)}%</span>
                         <span className="text-xs text-muted-foreground">
                           ({sala.horas.toFixed(1)}h)
                         </span>
@@ -851,22 +976,29 @@ export default function Home() {
                 </Button>
               </div>
               
-              <div className="flex flex-col gap-2">
-                <h3 className="text-sm font-medium">Usuarios con reservas</h3>
-                <p className="text-xs text-muted-foreground mb-1">
+              {/* Usuarios con reservas */}
+              <div className="flex flex-col gap-3 p-4 rounded-lg border border-blue-200 bg-blue-50/50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-blue-600" />
+                    <h3 className="text-sm font-medium">Usuarios con reservas</h3>
+                  </div>
+                  <div className="text-2xl font-bold text-blue-600">
+                    {stats.usuariosActivos}
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
                   Usuarios que han realizado al menos una reserva
                 </p>
-                <div className="text-2xl font-bold">{stats.usuariosActivos}</div>
                 <div className="text-xs text-muted-foreground">
                   de {stats.totalUsuarios} usuarios totales
                 </div>
-                {/* Solo mostrar el botón si el usuario es superadmin */}
                 {user?.rol === 'superadmin' && (
-                <Button variant="outline" size="sm" asChild>
-                  <Link href="/usuarios">
-                    Gestionar usuarios
-                  </Link>
-                </Button>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href="/usuarios">
+                      Gestionar usuarios
+                    </Link>
+                  </Button>
                 )}
               </div>
             </div>
