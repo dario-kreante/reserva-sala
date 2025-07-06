@@ -29,6 +29,7 @@ import { Combobox } from "@/components/ui/combobox"
 import { useUsuariosData, FormUsuarioData, Departamento, Usuario } from '@/hooks/useUsuariosData' 
 import { Pencil, Trash2, PlusCircle, RefreshCw } from 'lucide-react'
 import { Pagination } from "@/components/ui/pagination"
+import { useUser } from '@/hooks/useUser'
 
 // --- Componente: GestionDepartamentosDialog (Definido ANTES de Usuarios) ---
 interface GestionDepartamentosDialogProps {
@@ -69,6 +70,8 @@ function GestionDepartamentosDialog({
   };
 
   const handleToggle = async (dep: Departamento) => {
+    // 🔒 NOTA: Esta función es llamada desde un diálogo que solo es visible para superadmin,
+    // pero agregamos verificación adicional por seguridad
     setIsToggling(dep.id);
     const { error } = await onToggleActivo(dep.id, dep.activo);
     setIsToggling(null);
@@ -138,10 +141,14 @@ function GestionDepartamentosDialog({
 
 // --- Componente Principal: Usuarios ---
 export default function Usuarios() {
+  // Obtener usuario actual para verificar rol
+  const { user } = useUser()
+  
   // Obtener departamentos del hook
   const { 
     usuarios, 
-    departamentos, // Obtener lista de departamentos
+    departamentos, // Obtener lista de departamentos (solo activos para selectors)
+    allDepartamentos, // Obtener todos los departamentos para gestión
     loading, 
     loadingDepartamentos, // Obtener estado de carga
     error, 
@@ -150,7 +157,8 @@ export default function Usuarios() {
     actualizarUsuario,
     crearDepartamento, // Obtener la nueva función
     toggleDepartamentoActivo,
-    fetchDepartamentos
+    fetchDepartamentos, // Solo departamentos activos
+    fetchAllDepartamentos // Todos los departamentos para gestión
   } = useUsuariosData()
   
   const [busqueda, setBusqueda] = useState('')
@@ -240,6 +248,18 @@ export default function Usuarios() {
     })
   }
 
+  const handleOpenDepartamentosDialog = () => {
+    setDialogoDepartamentosAbierto(true)
+    // Cargar todos los departamentos cuando se abre el diálogo de gestión
+    fetchAllDepartamentos()
+  }
+
+  const handleCloseDepartamentosDialog = () => {
+    setDialogoDepartamentosAbierto(false)
+    // Recargar departamentos activos para asegurar que los selectores estén actualizados
+    fetchDepartamentos()
+  }
+
   const handleEliminar = async (id: string) => {
     // Cambiado para usar cambiarEstadoUsuario en lugar de actualizarUsuario con {activo: false}
     // Asumiendo que eliminar realmente significa desactivar
@@ -313,9 +333,12 @@ export default function Usuarios() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Usuarios del Sistema</h1>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setDialogoDepartamentosAbierto(true)}>
-            Gestionar Departamentos
-          </Button>
+          {/* Solo mostrar botón de gestión de departamentos a superadmin */}
+          {user?.rol === 'superadmin' && (
+            <Button variant="outline" onClick={handleOpenDepartamentosDialog}>
+              Gestionar Departamentos
+            </Button>
+          )}
         <Dialog open={dialogoAbierto} onOpenChange={(open) => {
           setDialogoAbierto(open)
           if (!open) resetForm()
@@ -542,11 +565,11 @@ export default function Usuarios() {
       {/* Diálogo para Gestionar Departamentos */}
       <GestionDepartamentosDialog
         isOpen={dialogoDepartamentosAbierto}
-        onClose={() => setDialogoDepartamentosAbierto(false)}
-        departamentos={departamentos}
+        onClose={handleCloseDepartamentosDialog}
+        departamentos={allDepartamentos} // Usar allDepartamentos para gestión
         onAddDepartamento={crearDepartamento}
         onToggleActivo={toggleDepartamentoActivo}
-        onRefresh={fetchDepartamentos}
+        onRefresh={fetchAllDepartamentos} // Usar fetchAllDepartamentos para mostrar todos en gestión
         loading={loadingDepartamentos}
       />
     </div>

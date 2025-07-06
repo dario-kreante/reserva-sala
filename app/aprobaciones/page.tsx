@@ -100,10 +100,11 @@ export default function Aprobaciones() {
         .from('reservas')
         .select(`
           *,
-          sala:salas(id, nombre),
+          sala:salas!inner(id, nombre),
           usuario:usuarios(id, nombre, apellido, email, rol)
         `)
         .eq('estado', 'pendiente')
+        .eq('sala.activo', true)  // Filtrar solo reservas de salas activas
         .order('fecha', { ascending: ordenFecha === 'asc' })
         .order('hora_inicio')
 

@@ -15,7 +15,13 @@ import {
   MessageSquare,
   BookOpen,
   GraduationCap,
-  Building
+  Building,
+  Eye,
+  Check,
+  X,
+  Download,
+  Filter,
+  Search
 } from "lucide-react"
 
 interface Reserva {
@@ -23,7 +29,7 @@ interface Reserva {
   fecha: string
   hora_inicio: string
   hora_fin: string
-  estado: 'pendiente' | 'aprobada' | 'rechazada' | 'cancelada'
+  estado: 'pendiente' | 'aprobada' | 'rechazada' | 'cancelada' | 'vencida'
   es_urgente: boolean
   es_externo: boolean
   es_reserva_sistema: boolean
@@ -88,6 +94,8 @@ export default function ListaReservas({
         return <Clock4 className="h-4 w-4 text-yellow-600" />
       case 'cancelada':
         return <XCircle className="h-4 w-4 text-gray-600" />
+      case 'vencida':
+        return <AlertTriangle className="h-4 w-4 text-orange-600" />
       default:
         return <Clock4 className="h-4 w-4 text-gray-600" />
     }
@@ -103,6 +111,8 @@ export default function ListaReservas({
         return 'bg-yellow-100 text-yellow-800'
       case 'cancelada':
         return 'bg-gray-100 text-gray-800'
+      case 'vencida':
+        return 'bg-orange-100 text-orange-800'
       default:
         return 'bg-gray-100 text-gray-800'
     }

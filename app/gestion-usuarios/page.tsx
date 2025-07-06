@@ -1,5 +1,9 @@
 "use client"
 
+// TODO: Este archivo usa departamentos hardcoded y necesita ser actualizado
+// para usar la tabla 'departamentos' de la base de datos como lo hace el archivo
+// app/usuarios/page.tsx. Actualmente tiene departamentos duplicados e inconsistentes.
+
 import { useState, useEffect } from 'react'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"

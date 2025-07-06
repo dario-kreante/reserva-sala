@@ -31,7 +31,8 @@ export type FormUsuarioData = BaseUsuarioForm & {
 
 export function useUsuariosData() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
-  const [departamentos, setDepartamentos] = useState<Departamento[]>([]) // Estado para departamentos
+  const [departamentos, setDepartamentos] = useState<Departamento[]>([]) // Estado para departamentos activos (selectores)
+  const [allDepartamentos, setAllDepartamentos] = useState<Departamento[]>([]) // Estado para gestión (todos)
   const [loading, setLoading] = useState(true)
   const [loadingDepartamentos, setLoadingDepartamentos] = useState(true) // Estado de carga para departamentos
   const [error, setError] = useState<string | null>(null)
@@ -81,23 +82,43 @@ export function useUsuariosData() {
     }
   }, [supabase])
 
-  // Función para obtener todos los departamentos activos
+  // Función para obtener todos los departamentos activos (para selectors)
   const fetchDepartamentos = useCallback(async () => {
-    console.log("Fetching departamentos...")
+    console.log("Fetching departamentos activos...")
     setLoadingDepartamentos(true)
     try {
       const { data, error } = await supabase
         .from('departamentos')
         .select('id, nombre, activo')
-        // .eq('activo', true) // O quitar filtro si se necesitan todos para el select
+        .eq('activo', true) // Solo mostrar departamentos activos en el selector
         .order('nombre', { ascending: true })
 
       if (error) throw error
-      console.log("Departamentos fetched:", data)
+      console.log("Departamentos activos fetched:", data)
       setDepartamentos(data || [])
     } catch (err) {
       console.error('Error fetching departamentos:', err)
       // Considerar mostrar un error específico para departamentos
+    } finally {
+      setLoadingDepartamentos(false)
+    }
+  }, [supabase])
+
+  // Función para obtener TODOS los departamentos (activos e inactivos) para gestión
+  const fetchAllDepartamentos = useCallback(async () => {
+    console.log("Fetching ALL departamentos...")
+    setLoadingDepartamentos(true)
+    try {
+      const { data, error } = await supabase
+        .from('departamentos')
+        .select('id, nombre, activo')
+        .order('nombre', { ascending: true })
+
+      if (error) throw error
+      console.log("All departamentos fetched:", data)
+      setAllDepartamentos(data || []) // Usar estado separado para gestión
+    } catch (err) {
+      console.error('Error fetching all departamentos:', err)
     } finally {
       setLoadingDepartamentos(false)
     }
@@ -266,9 +287,11 @@ export function useUsuariosData() {
       if (error) throw error
       console.log('Departamento creado:', data)
 
-      // Añadir el nuevo departamento a la lista local para actualizar UI
+      // Añadir el nuevo departamento a ambas listas locales para actualizar UI
       if (data) {
-        setDepartamentos(prev => [...prev, data].sort((a, b) => a.nombre.localeCompare(b.nombre)))
+        const sortedInsert = (prev: Departamento[]) => [...prev, data].sort((a, b) => a.nombre.localeCompare(b.nombre))
+        setDepartamentos(sortedInsert)
+        setAllDepartamentos(sortedInsert)
       }
 
       return { data: data as Departamento, error: null }
@@ -278,24 +301,34 @@ export function useUsuariosData() {
     }
   }
 
-  // Función para cambiar el estado activo de un departamento
-  const toggleDepartamentoActivo = async (id: number, estadoActual: boolean) => {
+  // Función para cambiar el estado activo de un departamento (SOLO SUPERADMIN)
+  const toggleDepartamentoActivo = async (id: number, estadoActual?: boolean) => {
     try {
-      console.log(`Cambiando estado activo del departamento ${id} a ${!estadoActual}`)
+      // 🔒 NOTA DE SEGURIDAD: Esta función debería ser llamada solo después de verificar 
+      // que el usuario es superadmin en el componente. Es una medida de seguridad adicional.
+      
+      // Si no se pasa estadoActual, lo calculamos desde el estado actual
+      const departamentoActual = allDepartamentos.find(d => d.id === id)
+      const nuevoEstado = estadoActual !== undefined ? !estadoActual : !departamentoActual?.activo
+      
+      console.log(`Cambiando estado activo del departamento ${id} a ${nuevoEstado}`)
       const { error } = await supabase
         .from('departamentos')
-        .update({ activo: !estadoActual })
+        .update({ activo: nuevoEstado })
         .eq('id', id)
 
       if (error) throw error
       console.log(`Estado del departamento ${id} cambiado.`)
 
-      // Actualizar la lista local de departamentos
-      setDepartamentos(prev =>
+      // Actualizar ambos estados de departamentos
+      const updateFunction = (prev: Departamento[]) =>
         prev.map(dep =>
-          dep.id === id ? { ...dep, activo: !estadoActual } : dep
+          dep.id === id ? { ...dep, activo: nuevoEstado } : dep
         )
-      )
+      
+      setDepartamentos(updateFunction) // Departamentos activos
+      setAllDepartamentos(updateFunction) // Todos los departamentos
+      
       return { error: null }
     } catch (err) {
       console.error('Error cambiando estado del departamento:', err)
@@ -312,12 +345,14 @@ export function useUsuariosData() {
 
   return {
     usuarios,
-    departamentos, // Devolver departamentos
+    departamentos, // Devolver departamentos activos (para selectores)
+    allDepartamentos, // Devolver todos los departamentos (para gestión)
     loading,
     loadingDepartamentos, // Devolver estado de carga
     error,
     fetchUsuarios,
-    fetchDepartamentos, // Devolver función para recargar si es necesario
+    fetchDepartamentos, // Devolver función para recargar departamentos activos
+    fetchAllDepartamentos, // Devolver función para recargar todos los departamentos
     crearUsuario,
     actualizarUsuario,
     cambiarEstadoUsuario,

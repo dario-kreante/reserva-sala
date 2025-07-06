@@ -32,7 +32,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { useToast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Calendar as CalendarIcon, Info, AlertTriangle, Check } from "lucide-react"
+import { Calendar as CalendarIcon, Info, AlertTriangle, Check, MessageSquare, User } from "lucide-react"
 import { useUser } from '@/hooks/useUser'
 import { supabase } from '@/lib/supabase'
 import { useReservasData } from '@/hooks/useReservasData'
@@ -69,7 +69,7 @@ interface ReservaResponse {
 }
 
 export default function MisReservas() {
-  const { reservas, loading, error, fetchUserReservas: fetchReservas } = useUserReservas()
+  const { reservas, loading, loadingMore, error, hasMore, fetchUserReservas: fetchReservas, loadMore } = useUserReservas()
   const { fetchHorariosOcupados, horariosOcupados, salas, loadingSalas } = useReservasData()
   const { toast } = useToast()
   const [nuevaReserva, setNuevaReserva] = useState<NuevaReserva>({
@@ -937,12 +937,17 @@ export default function MisReservas() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Historial de Reservas</CardTitle>
+            <CardTitle className="flex items-center justify-between">
+              <span>Historial de Reservas</span>
+              {reservas.length > 0 && !loading && (
+                <span className="text-sm font-normal text-muted-foreground">
+                  Mostrando {reservas.length} reserva{reservas.length !== 1 ? 's' : ''}
+                  {hasMore && ' (hay más disponibles)'}
+                </span>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="mt-8">
-              <h2 className="text-xl font-semibold mb-4">Historial de Reservas</h2>
-              
               {loading ? (
                 <div className="text-center py-8">Cargando tus reservas...</div>
               ) : error ? (
@@ -957,7 +962,7 @@ export default function MisReservas() {
                     <Card key={reserva.id}>
                       <CardContent className="p-4">
                         <div className="flex justify-between items-start">
-                          <div>
+                          <div className="flex-1 mr-4">
                             <h3 className="font-semibold">{reserva.sala.nombre}</h3>
                             <p className="text-sm text-muted-foreground">
                               {(() => {
@@ -980,7 +985,54 @@ export default function MisReservas() {
                             <p className="text-sm">
                               {reserva.hora_inicio.slice(0, 5)} - {reserva.hora_fin.slice(0, 5)}
                             </p>
+                            
+                            {/* Comentario de la reserva */}
+                            {reserva.comentario && (
+                              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                                <div className="flex items-start gap-2">
+                                  <MessageSquare className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                                  <div>
+                                    <p className="text-xs font-medium text-blue-800 mb-1">Comentario inicial:</p>
+                                    <p className="text-sm text-blue-700">{reserva.comentario}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Motivo de rechazo */}
+                            {reserva.estado === 'rechazada' && reserva.motivo_rechazo && (
+                              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-md">
+                                <div className="flex items-start gap-2">
+                                  <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+                                  <div>
+                                    <p className="text-xs font-medium text-red-800 mb-1">Motivo del rechazo:</p>
+                                    <p className="text-sm text-red-700">{reserva.motivo_rechazo}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Información adicional para reservas externas */}
+                            {reserva.es_externo && (
+                              <div className="mt-3 p-3 bg-purple-50 border border-purple-200 rounded-md">
+                                <div className="flex items-start gap-2">
+                                  <User className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                                  <div>
+                                    <p className="text-xs font-medium text-purple-800 mb-1">Reserva externa:</p>
+                                    <div className="text-sm text-purple-700 space-y-1">
+                                      {reserva.solicitante_nombre_completo && (
+                                        <p><span className="font-medium">Solicitante:</span> {reserva.solicitante_nombre_completo}</p>
+                                      )}
+                                      {reserva.institucion && (
+                                        <p><span className="font-medium">Institución:</span> {reserva.institucion}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
+                          
                           <div className="flex flex-col gap-2 items-end">
                             <div className="flex gap-2">
                               {reserva.es_urgente && (
@@ -991,7 +1043,9 @@ export default function MisReservas() {
                               <span className={`text-xs rounded-full px-2 py-1 ${
                                 reserva.estado === 'pendiente' ? 'bg-yellow-100 text-yellow-800' :
                                 reserva.estado === 'aprobada' ? 'bg-green-100 text-green-800' :
-                                'bg-red-100 text-red-800'
+                                reserva.estado === 'rechazada' ? 'bg-red-100 text-red-800' :
+                                reserva.estado === 'cancelada' ? 'bg-gray-100 text-gray-800' :
+                                'bg-gray-100 text-gray-800'
                               }`}>
                                 {reserva.estado.charAt(0).toUpperCase() + reserva.estado.slice(1)}
                               </span>
@@ -1010,9 +1064,40 @@ export default function MisReservas() {
                       </CardContent>
                     </Card>
                   ))}
+                  
+                  {/* Botón para cargar más reservas */}
+                  {hasMore && (
+                    <div className="flex justify-center pt-6">
+                      <Button 
+                        variant="outline" 
+                        onClick={loadMore}
+                        disabled={loadingMore}
+                        className="w-full max-w-xs"
+                      >
+                        {loadingMore ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2" />
+                            Cargando más reservas...
+                          </>
+                        ) : (
+                          <>
+                            Ver más reservas
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                  
+                  {/* Mensaje cuando se han cargado todas las reservas */}
+                  {!hasMore && reservas.length > 10 && (
+                    <div className="flex justify-center pt-6">
+                      <p className="text-sm text-muted-foreground bg-gray-50 px-4 py-2 rounded-lg">
+                        ✅ Has visto todas tus reservas ({reservas.length} en total)
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
           </CardContent>
         </Card>
       </div>

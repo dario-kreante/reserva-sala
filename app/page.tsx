@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useReservasData } from '@/hooks/useReservasData'
 import { useUsuariosData } from '@/hooks/useUsuariosData'
@@ -24,7 +25,7 @@ import {
 import { 
   Users, CalendarCheck2, Clock, TrendingUp,
   BarChart3, PieChart as PieChartIcon, Download, Plus, X,
-  User, Building, Calendar, MessageSquare, Tag, BookOpen, GraduationCap, FileText
+  User, Building, Calendar, MessageSquare, Tag, BookOpen, GraduationCap, FileText, Info, AlertTriangle
 } from 'lucide-react'
 import { toast } from "@/components/ui/use-toast"
 import {
@@ -46,6 +47,9 @@ import Link from "next/link"
 import { esFechaValida, validarHorarioConsistente } from "./utils/horarioValidation"
 import { Textarea } from "@/components/ui/textarea"
 import { useUser } from "@/hooks/useUser"
+import { useResponsableSalas } from '@/hooks/useResponsableSalas'
+import { Badge } from "@/components/ui/badge"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 // Función para calcular la duración en horas entre dos horas
 const calcularDuracion = (horaInicio: string, horaFin: string): number => {
@@ -67,12 +71,11 @@ interface DashboardStats {
 }
 
 export default function Home() {
+  const router = useRouter()
   const [reservas, setReservas] = useState<any[]>([])
   const [usuarios, setUsuarios] = useState<any[]>([])
   const [salas, setSalas] = useState<any[]>([])
-  const [loadingReservas, setLoadingReservas] = useState(true)
-  const [loadingUsuarios, setLoadingUsuarios] = useState(true)
-  const [loadingSalas, setLoadingSalas] = useState(true)
+  // Ya no necesitamos estados locales de loading - usamos directamente los hooks
   const [stats, setStats] = useState<DashboardStats>({
     totalUsuarios: 0,
     usuariosActivos: 0,
@@ -99,45 +102,108 @@ export default function Home() {
   // Agregar estados para el diálogo de rechazo
   const [dialogoRechazoAbierto, setDialogoRechazoAbierto] = useState(false)
   const [comentarioRechazo, setComentarioRechazo] = useState('')
+  
+  // Estado para timeout de loading
+  const [forceShowContent, setForceShowContent] = useState(false)
+  
+  // Estado para controlar la redirección
+  const [redirecting, setRedirecting] = useState(false)
 
-  // Agregar hook de usuario para debug
-  const { user } = useUser()
+  // Agregar hook de usuario para debug y autenticación
+  const { user, loading: userLoading } = useUser()
 
-  // Debug del usuario autenticado
+  const { 
+    salasResponsable, 
+    loading: loadingSalasResponsable, 
+    puedeVerTodo,
+    esSuperAdmin,
+    esAdmin
+  } = useResponsableSalas()
+
+  // Usuario autenticado
   useEffect(() => {
-    console.log('🧑‍💻 Dashboard - Usuario autenticado:', user)
-    console.log('🧑‍💻 Dashboard - Rol del usuario:', user?.rol)
-    console.log('🧑‍💻 Dashboard - ID del usuario:', user?.id)
+    if (user) {
+      console.log('✅ Usuario autenticado:', user.nombre, user.apellido, `(${user.rol})`)
+    }
   }, [user])
 
+  // VALIDACIÓN DE ROLES: Redirección para usuarios no administradores
   useEffect(() => {
-    if (!loadingReservasData) {
-      console.log('📊 Dashboard - Reservas recibidas:', reservasData?.length || 0)
-      console.log('📊 Dashboard - Primeras 3 reservas:', reservasData?.slice(0, 3))
-      setReservas(reservasData)
-      setLoadingReservas(false)
+    if (!userLoading && user && !redirecting) {
+      const rolesPermitidos = ['admin', 'superadmin'];
+      
+      if (!rolesPermitidos.includes(user.rol)) {
+        console.log('🚫 Acceso denegado al dashboard. Usuario:', user.nombre, user.apellido, `(${user.rol}) - Redirigiendo a /mis-reservas`);
+        setRedirecting(true);
+        router.push('/mis-reservas');
+      } else {
+        console.log('✅ Acceso autorizado al dashboard. Usuario:', user.nombre, user.apellido, `(${user.rol})`);
+      }
     }
-    if (!loadingUsuariosData) {
-      setUsuarios(usuariosData)
-      setLoadingUsuarios(false)
+  }, [user, userLoading, router, redirecting])
+
+  // useEffect para timeout de loading
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      console.log('⏰ Timeout alcanzado en página principal - forzando mostrar contenido')
+      setForceShowContent(true)
+    }, 8000)
+
+    if (!loadingReservasData && !loadingSalasResponsable && !loadingUsuariosData) {
+      clearTimeout(timeout)
     }
-    if (salasData.length > 0) {
-      setSalas(salasData)
-      setLoadingSalas(false)
-    }
-  }, [loadingReservasData, loadingUsuariosData, reservasData, usuariosData, salasData])
+
+    return () => clearTimeout(timeout)
+  }, [loadingReservasData, loadingSalasResponsable, loadingUsuariosData])
+
+  // La protección de autenticación se mueve más abajo después de todas las funciones
 
   useEffect(() => {
-    if (!loadingReservas && !loadingUsuarios) {
+    if (!loadingReservasData && reservasData) {
+      setReservas(reservasData)
+    }
+    if (!loadingUsuariosData && usuariosData) {
+      setUsuarios(usuariosData)
+    }
+    if (salasData && salasData.length > 0) {
+      // CORRECCIÓN: Filtrar salas según el rol del usuario
+      let salasFiltradas = salasData;
+      
+      if (esAdmin && !esSuperAdmin && salasResponsable.length > 0) {
+        // Si es admin (no superadmin), filtrar solo las salas de las que es responsable
+        const salaIds = salasResponsable.map(sala => sala.id);
+        salasFiltradas = salasData.filter(sala => salaIds.includes(sala.id));
+        console.log('🔐 Admin filtrado - Salas visibles:', salasFiltradas.map(s => s.nombre));
+      } else if (esSuperAdmin) {
+        console.log('👑 Superadmin - Todas las salas visibles:', salasData.length);
+      }
+      
+      setSalas(salasFiltradas)
+    }
+  }, [loadingReservasData, loadingUsuariosData, reservasData, usuariosData, salasData, esAdmin, esSuperAdmin, salasResponsable])
+
+  useEffect(() => {
+    if (!loadingReservasData && !loadingUsuariosData) {
       // Calcular fecha de hoy en formato YYYY-MM-DD para comparación
       const hoy = new Date().toISOString().split('T')[0];
       console.log(`Fecha de hoy para estadísticas: ${hoy}`);
       
-      // Contar reservas pendientes
-      const pendientes = reservas.filter(r => r.estado === 'pendiente').length;
+      // CORRECCIÓN: Usar reservas filtradas según responsabilidad para todas las estadísticas
+      let reservasParaEstadisticas = reservas;
       
-      // Contar reservas de hoy - normalizar el formato de fecha de cada reserva para comparar
-      const reservasHoy = reservas.filter(r => {
+      if (esAdmin && !esSuperAdmin && salasResponsable.length > 0) {
+        const salaIds = salasResponsable.map(sala => sala.id);
+        reservasParaEstadisticas = reservas.filter(reserva => 
+          reserva.sala && salaIds.includes(reserva.sala.id)
+        );
+        console.log('📊 Estadísticas filtradas para admin:', reservasParaEstadisticas.length, 'de', reservas.length, 'reservas');
+      }
+      
+      // Contar reservas pendientes (usando reservas filtradas)
+      const pendientes = reservasParaEstadisticas.filter(r => r.estado === 'pendiente').length;
+      
+      // Contar reservas de hoy - normalizar el formato de fecha de cada reserva para comparar (usando reservas filtradas)
+      const reservasHoy = reservasParaEstadisticas.filter(r => {
         // Normalizar la fecha de la reserva al formato YYYY-MM-DD
         let fechaNormalizada: string;
         
@@ -170,23 +236,23 @@ export default function Home() {
         return fechaNormalizada === hoy;
       }).length;
       
-      // Calcular usuarios con reservas (usuarios que han realizado al menos una reserva en el período)
-      const usuariosActivos = new Set(reservas.filter(r => r.usuario?.id).map(r => r.usuario!.id)).size;
+      // Calcular usuarios con reservas (usuarios que han realizado al menos una reserva en el período) (usando reservas filtradas)
+      const usuariosActivos = new Set(reservasParaEstadisticas.filter(r => r.usuario?.id).map(r => r.usuario!.id)).size;
       
-      // Distribución de roles
+      // Distribución de roles (mantenemos todos los usuarios para esta estadística)
       const roles = usuarios.reduce<Record<string, number>>((acc, user) => {
         acc[user.rol] = (acc[user.rol] || 0) + 1
         return acc
       }, {})
 
-      // Uso por sala (usando reservasFiltradas)
-      const usoPorSala = reservas.reduce<Record<string, number>>((acc, reserva) => {
+      // Uso por sala (usando reservas filtradas)
+      const usoPorSala = reservasParaEstadisticas.reduce<Record<string, number>>((acc, reserva) => {
         const nombreSala = reserva.sala?.nombre || 'Sin Sala'
         acc[nombreSala] = (acc[nombreSala] || 0) + 1
         return acc
       }, {})
 
-      // Reservas por día (usando reservasFiltradas)
+      // Reservas por día (usando reservas filtradas)
       const ultimos7Dias = [...Array(7)].map((_, i) => {
         const d = new Date()
         d.setDate(d.getDate() - i)
@@ -218,8 +284,8 @@ export default function Home() {
         currentDate.setDate(currentDate.getDate() + 1);
       }
       
-      // Contar reservas por día
-      reservas.forEach(reserva => {
+      // Contar reservas por día (usando reservas filtradas)
+      reservasParaEstadisticas.forEach(reserva => {
         try {
           // Normalizar la fecha de la reserva
           let fechaNormalizada: string;
@@ -249,101 +315,74 @@ export default function Home() {
             }
           }
         } catch (error) {
-          console.error(`Error al procesar fecha para estadísticas: ${reserva.fecha}`, error);
+          console.error('Error al procesar fecha para estadísticas:', error);
         }
       });
       
-      // Convertir a formato para el gráfico
-      const reservasPorDiaArray = Object.entries(reservasPorDia).map(([fecha, total]) => ({
-        fecha,
-        total
-      })).sort((a, b) => a.fecha.localeCompare(b.fecha));
-
-      // Calcular tasa de uso por sala (en horas)
-      const horasPorSala: Record<string, { horas: number; capacidadTotal: number }> = {}
-      
-      // Calcular horas totales disponibles por sala (8:00 a 19:00 = 11 horas por día)
-      const horasDiarias = 11
-      
-      // Definir días según el período seleccionado
-      let diasPeriodo = 30; // valor por defecto
-      if (periodoSeleccionado === 'semana') {
-        diasPeriodo = 7;
-      } else if (periodoSeleccionado === 'mes') {
-        diasPeriodo = 30;
-      } else if (periodoSeleccionado === 'año') {
-        diasPeriodo = 365;
-      }
-      
-      // Inicializar horas disponibles por sala
+      // Calcular horas por sala para tasa de uso (usando reservas filtradas)
+      const horasPorSala: Record<string, number> = {}
       salas.forEach(sala => {
-        horasPorSala[sala.nombre] = { 
-          horas: 0, 
-          capacidadTotal: horasDiarias * diasPeriodo 
+        const reservasSala = reservasParaEstadisticas.filter(r => r.sala?.id === sala.id)
+        const horas = reservasSala.reduce((total, r) => {
+          return total + calcularDuracion(r.hora_inicio, r.hora_fin)
+        }, 0)
+        
+        if (horas > 0) {
+          horasPorSala[sala.nombre] = horas
         }
       })
 
-      // Sumar horas de uso por sala
-      reservas.forEach(reserva => {
-        if (reserva.sala) {
-          const duracion = calcularDuracion(reserva.hora_inicio, reserva.hora_fin)
-          const nombreSala = reserva.sala.nombre
-          
-          if (!horasPorSala[nombreSala]) {
-            horasPorSala[nombreSala] = { 
-              horas: 0, 
-              capacidadTotal: horasDiarias * diasPeriodo 
-            }
-          }
-          
-          horasPorSala[nombreSala].horas += duracion
-        }
-      })
-
-      // Convertir a array para el gráfico
+      // Convertir a array y calcular porcentajes (usando salas filtradas)
+      const totalHoras = Object.values(horasPorSala).reduce((sum, horas) => sum + horas, 0)
       const tasaUsoSalasData = Object.entries(horasPorSala)
-        .map(([name, { horas, capacidadTotal }]) => ({
-          name,
-          horas,
-          porcentaje: Math.min((horas / capacidadTotal) * 100, 100) // Limitar a 100%
+        .map(([nombre, horas]) => ({
+          name: nombre,
+          horas: Number(horas.toFixed(2)),
+          porcentaje: Number(((horas / totalHoras) * 100).toFixed(1))
         }))
         .sort((a, b) => b.horas - a.horas)
-        .slice(0, 10) // Mostrar solo las 10 salas más usadas
+        .slice(0, 10) // Mostrar solo las 10 salas más usadas (de las que tiene acceso el admin)
 
-      // Calcular uso por tipo de solicitante
-      const usoPorTipo: Record<string, { value: number; count: number }> = {
-        'Interno': { value: 0, count: 0 },
-        'Externo': { value: 0, count: 0 }
-      }
-
-      reservas.forEach(reserva => {
-        const duracion = calcularDuracion(reserva.hora_inicio, reserva.hora_fin)
-        const tipoSolicitante = reserva.es_externo ? 'Externo' : 'Interno'
+      // Uso por tipo de solicitante (usando reservas filtradas)
+      const usoPorSolicitante = reservasParaEstadisticas.reduce<Record<string, { value: number; count: number }>>((acc, reserva) => {
+        let tipo: string
+        if (reserva.es_externo) {
+          tipo = 'Externos'
+        } else if (reserva.es_reserva_sistema) {
+          tipo = 'Sistema'
+        } else {
+          tipo = reserva.usuario?.rol === 'profesor' ? 'Profesores' : 
+                reserva.usuario?.rol === 'alumno' ? 'Alumnos' :
+                reserva.usuario?.rol === 'administrativo' ? 'Administrativos' : 'Otros'
+        }
         
-        usoPorTipo[tipoSolicitante].value += duracion
-        usoPorTipo[tipoSolicitante].count += 1
-      })
-
-      const usoPorSolicitanteData = Object.entries(usoPorTipo)
-        .map(([name, stats]) => ({
-          name,
-          value: stats.value,
-          count: stats.count
-        }))
+        const duracion = calcularDuracion(reserva.hora_inicio, reserva.hora_fin)
+        
+        if (!acc[tipo]) {
+          acc[tipo] = { value: 0, count: 0 }
+        }
+        acc[tipo].value += duracion
+        acc[tipo].count += 1
+        return acc
+      }, {})
 
       setStats({
         totalUsuarios: usuarios.length,
         usuariosActivos,
         reservasHoy,
         reservasPendientes: pendientes,
-        reservasPorDia: reservasPorDiaArray,
+        reservasPorDia: Object.entries(reservasPorDia).map(([fecha, total]) => ({ fecha, total })),
         distribucionRoles: Object.entries(roles).map(([name, value]) => ({ name, value })),
         usoPorSala: Object.entries(usoPorSala).map(([name, value]) => ({ name, value })),
         tasaUsoSalas: tasaUsoSalasData,
-        usoPorSolicitante: usoPorSolicitanteData
+        usoPorSolicitante: Object.entries(usoPorSolicitante).map(([name, data]) => ({
+          name,
+          value: data.value,
+          count: data.count
+        }))
       })
     }
-  }, [loadingReservas, loadingUsuarios, reservas, usuarios, salas, periodoSeleccionado])
+  }, [loadingReservasData, loadingUsuariosData, reservas, usuarios, salas, periodoSeleccionado, esAdmin, esSuperAdmin, salasResponsable])
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8']
 
@@ -364,6 +403,8 @@ export default function Home() {
         return '#ef4444'; // rojo
       case 'cancelada':
         return '#6b7280'; // gris
+      case 'vencida':
+        return '#d97706'; // naranja/marrón para vencidas
       default:
         return '#3b82f6'; // azul por defecto
     }
@@ -519,6 +560,31 @@ export default function Home() {
 
   const handleAprobarReserva = async (reservaId: number) => {
     try {
+      // VALIDACIÓN DE SEGURIDAD: Verificar si el admin puede aprobar esta reserva
+      if (esAdmin && !esSuperAdmin) {
+        const reserva = reservas.find(r => r.id === reservaId);
+        if (!reserva) {
+          toast({
+            title: "Error",
+            description: "No se encontró la reserva.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        // Verificar si el admin es responsable de la sala
+        const salaIds = salasResponsable.map(sala => sala.id);
+        if (!salaIds.includes(reserva.sala?.id)) {
+          toast({
+            title: "Acceso denegado",
+            description: "No tienes permisos para aprobar reservas de esta sala.",
+            variant: "destructive",
+          });
+          console.log('🚫 Admin intentó aprobar reserva de sala no autorizada:', reserva.sala?.nombre);
+          return;
+        }
+      }
+
       const { error } = await supabase
         .from('reservas')
         .update({ estado: 'aprobada' })
@@ -561,6 +627,31 @@ export default function Home() {
     }
     
     try {
+      // VALIDACIÓN DE SEGURIDAD: Verificar si el admin puede rechazar esta reserva
+      if (esAdmin && !esSuperAdmin) {
+        const reserva = reservas.find(r => r.id === reservaId);
+        if (!reserva) {
+          toast({
+            title: "Error",
+            description: "No se encontró la reserva.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        // Verificar si el admin es responsable de la sala
+        const salaIds = salasResponsable.map(sala => sala.id);
+        if (!salaIds.includes(reserva.sala?.id)) {
+          toast({
+            title: "Acceso denegado",
+            description: "No tienes permisos para rechazar reservas de esta sala.",
+            variant: "destructive",
+          });
+          console.log('🚫 Admin intentó rechazar reserva de sala no autorizada:', reserva.sala?.nombre);
+          return;
+        }
+      }
+      
       const { error } = await supabase
         .from('reservas')
         .update({ 
@@ -590,14 +681,23 @@ export default function Home() {
   }
 
   const exportarExcel = () => {
-    // Preparar datos para el reporte con información más completa
-    const datosReservas = reservas
-      .filter(r => r.usuario?.id !== '4a8794b5-139a-4d5d-a9da-dc2873665ca9')
-      .map(reserva => {
+    // CORRECCIÓN: Filtrar reservas según responsabilidad para la exportación
+    let reservasParaExportar = reservas.filter(r => r.usuario?.id !== '4a8794b5-139a-4d5d-a9da-dc2873665ca9');
+    
+    if (esAdmin && !esSuperAdmin && salasResponsable.length > 0) {
+      const salaIds = salasResponsable.map(sala => sala.id);
+      reservasParaExportar = reservasParaExportar.filter(reserva => 
+        reserva.sala && salaIds.includes(reserva.sala.id)
+      );
+      console.log('📋 Exportación filtrada para admin:', reservasParaExportar.length, 'reservas');
+    }
+    
+    // Preparar datos para el reporte con información más completa (usando reservas filtradas)
+    const datosReservas = reservasParaExportar.map(reserva => {
         const duracion = calcularDuracion(reserva.hora_inicio, reserva.hora_fin)
         
-        // Formatear la fecha de reserva correctamente
-        const fechaReserva = new Date(reserva.fecha);
+        // Formatear la fecha de reserva correctamente (CORREGIDO)
+        const fechaReserva = new Date(reserva.fecha + 'T00:00:00');
         const fechaFormateada = fechaReserva.toLocaleDateString('es-ES', {
           year: 'numeric',
           month: '2-digit',
@@ -637,7 +737,7 @@ export default function Home() {
           franjaHoraria = 'Noche';
         }
 
-        // Determinar tipo de uso académico
+        // Determinar tipo de uso académico (CORREGIDO)
         let tipoUsoAcademico = 'Otro';
         if (reserva.es_reserva_sistema) {
           tipoUsoAcademico = 'Clase Regular';
@@ -651,6 +751,25 @@ export default function Home() {
         const diasAnticipacion = reserva.created_at ? 
           Math.max(0, Math.ceil((new Date(reserva.fecha).getTime() - new Date(reserva.created_at).getTime()) / (1000 * 60 * 60 * 24))) : 'N/A';
 
+        // ===== CAMPOS CRÍTICOS AÑADIDOS/CORREGIDOS =====
+        
+        // RUT del solicitante (CORREGIDO)
+        const rutSolicitante = reserva.es_externo 
+          ? 'N/A (Externo)'
+          : reserva.usuario?.rut || 'N/A';
+
+        // Información del solicitante interno (para reservas externas)
+        const solicitanteInterno = reserva.es_externo && reserva.usuario
+          ? `${reserva.usuario.nombre} ${reserva.usuario.apellido} (${reserva.usuario.rut})`
+          : 'N/A';
+
+        // Información del aprobador (NUEVO)
+        const aprobadorNombre = 'PENDIENTE: Implementar campo aprobador';
+        const aprobadorRut = 'PENDIENTE: Implementar campo aprobador';
+
+        // Preaviso (NUEVO)
+        const esPreaviso = diasAnticipacion !== 'N/A' && diasAnticipacion < 1 ? 'SÍ' : 'NO';
+
         return {
           'ID': reserva.id,
           'Fecha de Reserva': fechaFormateada,
@@ -663,12 +782,16 @@ export default function Home() {
           'Duración (horas)': duracion.toFixed(2),
           'Franja Horaria': franjaHoraria,
           'Estado': reserva.estado,
-          'Es Urgente': reserva.es_urgente ? 'Sí' : 'No',
+          'Es Urgente': reserva.es_urgente ? 'SÍ' : 'NO',
           'Tipo Solicitante': reserva.es_externo ? 'Externo' : 'Interno',
           'Tipo de Uso Académico': tipoUsoAcademico,
-          'Solicitante': reserva.es_externo 
+          
+          // ===== INFORMACIÓN DEL SOLICITANTE (CORREGIDA) =====
+          'Nombre Solicitante': reserva.es_externo 
             ? reserva.solicitante_nombre_completo || 'Sin nombre'
             : `${reserva.usuario?.nombre || ''} ${reserva.usuario?.apellido || ''}`.trim() || 'Sin usuario',
+          'RUT Solicitante': rutSolicitante,
+          'Solicitante Interno (para externos)': solicitanteInterno,
           'Email Solicitante': reserva.es_externo 
             ? reserva.mail_externos || 'N/A'
             : reserva.usuario?.email || 'N/A',
@@ -676,13 +799,25 @@ export default function Home() {
           'Institución': reserva.institucion || (reserva.es_externo ? 'Sin especificar' : 'UTalca'),
           'Rol Usuario': reserva.usuario?.rol || 'N/A',
           'Departamento Usuario': reserva.usuario?.departamento || 'N/A',
-          'Es Reserva del Sistema': reserva.es_reserva_sistema ? 'Sí' : 'No',
+          'Es Preaviso': esPreaviso,
+          
+          // ===== INFORMACIÓN DEL APROBADOR (NUEVO) =====
+          'Nombre Aprobador': aprobadorNombre,
+          'RUT Aprobador': aprobadorRut,
+          
+          // ===== CAMPOS DEL SISTEMA (CORREGIDOS) =====
+          'Es Reserva del Sistema': reserva.es_reserva_sistema === true ? 'SÍ' : 'NO',
+          'Valor DEBUG es_reserva_sistema': String(reserva.es_reserva_sistema), // Campo temporal para depuración
           'Módulo/Asignatura': reserva.nombre_modulo || 'N/A',
           'Código Asignatura': reserva.codigo_asignatura || 'N/A',
           'Sección': reserva.seccion || 'N/A',
           'Profesor Responsable': reserva.profesor_responsable || 'N/A',
+          
+          // ===== COMENTARIOS Y RECHAZOS (SEPARADOS) =====
           'Comentarios': reserva.comentario || 'Sin comentarios',
           'Motivo de Rechazo': reserva.motivo_rechazo || (reserva.estado === 'rechazada' ? 'Sin motivo especificado' : 'N/A'),
+          
+          // ===== FECHAS Y MÉTRICAS =====
           'Fecha de Creación': fechaCreacion,
           'Última Actualización': fechaActualizacion,
           'Tiempo de Respuesta (días)': tiempoRespuesta,
@@ -695,8 +830,8 @@ export default function Home() {
         }
       })
 
-    // Crear estadísticas generales más detalladas
-    const reservasCompletas = reservas.filter(r => r.usuario?.id !== '4a8794b5-139a-4d5d-a9da-dc2873665ca9');
+    // Crear estadísticas generales más detalladas (usando reservas filtradas)
+    const reservasCompletas = reservasParaExportar;
     const totalHoras = reservasCompletas.reduce((total, r) => total + calcularDuracion(r.hora_inicio, r.hora_fin), 0);
     const reservasAprobadas = reservasCompletas.filter(r => r.estado === 'aprobada');
     const reservasRechazadas = reservasCompletas.filter(r => r.estado === 'rechazada');
@@ -712,6 +847,7 @@ export default function Home() {
       { Métrica: 'Reservas Urgentes', Valor: reservasUrgentes.length, Porcentaje: `${((reservasUrgentes.length / reservasCompletas.length) * 100).toFixed(1)}%` },
       { Métrica: 'Reservas Externas', Valor: reservasExternas.length, Porcentaje: `${((reservasExternas.length / reservasCompletas.length) * 100).toFixed(1)}%` },
       { Métrica: 'Reservas del Sistema', Valor: reservasSistema.length, Porcentaje: `${((reservasSistema.length / reservasCompletas.length) * 100).toFixed(1)}%` },
+      { Métrica: 'Reservas en Preaviso', Valor: datosReservas.filter(r => r['Es Preaviso'] === 'SÍ').length, Porcentaje: `${((datosReservas.filter(r => r['Es Preaviso'] === 'SÍ').length / reservasCompletas.length) * 100).toFixed(1)}%` },
       { Métrica: 'Horas Totales Reservadas', Valor: totalHoras.toFixed(2), Porcentaje: '' },
       { Métrica: 'Promedio de Duración (horas)', Valor: reservasCompletas.length > 0 ? (totalHoras / reservasCompletas.length).toFixed(2) : '0', Porcentaje: '' }
     ]
@@ -719,7 +855,7 @@ export default function Home() {
     // Crear libro de trabajo con múltiples hojas
     const wb = XLSX.utils.book_new()
     
-    // Hoja principal con todas las reservas
+    // Hoja principal con todas las reservas (CORREGIDA)
     const wsReservas = XLSX.utils.json_to_sheet(datosReservas)
     XLSX.utils.book_append_sheet(wb, wsReservas, 'Reservas Completas')
     
@@ -729,26 +865,129 @@ export default function Home() {
     
     // Generar archivo con nombre más descriptivo
     const fechaHoy = new Date().toISOString().split('T')[0]
-    const nombreArchivo = `Reporte_Completo_Reservas_Institucional_${fechaHoy}.xlsx`
+    const tipoReporte = esAdmin && !esSuperAdmin ? '_Admin_Filtrado' : '_Completo';
+    const nombreArchivo = `Reporte${tipoReporte}_Reservas_UTalca_${fechaHoy}.xlsx`
     
     XLSX.writeFile(wb, nombreArchivo)
   }
 
-  if (loadingReservas || loadingUsuarios) {
+  // Filtrar datos según el rol y responsabilidad
+  useEffect(() => {
+    if (loadingReservasData || loadingSalasResponsable) return
+
+
+
+    let reservasFiltradas = reservasData
+
+    // Si es admin (no superadmin), aplicar filtro por salas responsables
+    if (esAdmin && !esSuperAdmin) {
+      if (salasResponsable.length === 0) {
+
+        setReservas([])
+        return
+      }
+
+      const salaIds = salasResponsable.map(sala => sala.id)
+
+
+      // Filtrar reservas por salas responsables
+      reservasFiltradas = reservasData.filter(reserva => 
+        reserva.sala && salaIds.includes(reserva.sala.id)
+      )
+
+
+    } else if (esSuperAdmin) {
+
+    }
+
+    setReservas(reservasFiltradas)
+  }, [reservasData, salasResponsable, loadingReservasData, esAdmin, esSuperAdmin])
+
+  if (loadingReservasData || loadingUsuariosData) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900" />
+      <div className="container mx-auto py-8 px-4">
+        <div className="flex justify-center items-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <span className="ml-2">Cargando estadísticas...</span>
+        </div>
+        
+
       </div>
     )
   }
 
+
+
+  // Mostrar contenido forzado o cuando termine la carga
+  if ((loadingReservasData || loadingSalasResponsable || loadingUsuariosData) && !forceShowContent) {
+    return (
+      <div className="container mx-auto py-8 px-4">
+        <div className="flex justify-center items-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <span className="ml-2">Cargando datos...</span>
+        </div>
+      </div>
+    )
+  }
+
+  // Protección de autenticación - mostrar loading mientras se verifica el usuario
+  if (userLoading) {
+    return (
+      <div className="container mx-auto p-6">
+        <div className="flex justify-center items-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <span className="ml-2">Verificando autenticación...</span>
+        </div>
+      </div>
+    )
+  }
+
+  // Si no hay usuario después de terminar de cargar, no renderizar (useUser ya maneja la redirección)
+  if (!userLoading && !user) {
+    return (
+      <div className="container mx-auto p-6">
+        <div className="flex justify-center items-center py-12">
+          <div className="text-center">
+            <p className="text-lg text-muted-foreground">Redirigiendo al login...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Mostrar pantalla de redirección si se está redirigiendo
+  if (redirecting || (user && !userLoading && !['admin', 'superadmin'].includes(user.rol))) {
+    return (
+      <div className="container mx-auto p-6">
+        <div className="flex justify-center items-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+            <h2 className="text-lg font-semibold text-amber-600 mb-2">Acceso Restringido</h2>
+            <p className="text-muted-foreground mb-2">Solo los administradores pueden acceder al dashboard.</p>
+            <p className="text-sm text-muted-foreground">Redirigiendo a tus reservas...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Verificar si el admin no tiene salas asignadas
+  const adminSinSalas = esAdmin && !esSuperAdmin && salasResponsable.length === 0;
+
   return (
     <div className="container mx-auto py-8 px-4">
+
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-muted-foreground">
-            Bienvenido al panel de control. Aquí tienes un resumen del sistema.
+            {esAdmin && !esSuperAdmin 
+              ? `Panel de gestión de ${salasResponsable.length === 0 ? 'ninguna sala asignada' : `${salasResponsable.length} sala${salasResponsable.length > 1 ? 's' : ''} asignada${salasResponsable.length > 1 ? 's' : ''}`}`
+              : esSuperAdmin 
+                ? 'Panel de administración completo del sistema'
+                : 'Bienvenido al panel de control'
+            }
           </p>
         </div>
         
@@ -777,6 +1016,25 @@ export default function Home() {
           </Button>
         </div>
       </div>
+
+      {/* Alerta para admin sin salas asignadas */}
+      {adminSinSalas && (
+        <div className="mb-6 p-4 border border-amber-200 bg-amber-50 rounded-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <h3 className="text-sm font-medium text-amber-800">Sin salas asignadas</h3>
+          </div>
+          <p className="text-sm text-amber-700 mb-2">
+            Tu cuenta de administrador no tiene salas asignadas. Contacta al superadministrador 
+            para que te asigne las salas que debes gestionar.
+          </p>
+          <p className="text-xs text-amber-600">
+            Mientras tanto, las estadísticas y funcionalidades del dashboard estarán limitadas.
+          </p>
+        </div>
+      )}
+
+
 
       {/* Estadísticas Clave */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -951,27 +1209,68 @@ export default function Home() {
               <div className="flex flex-col gap-3 p-4 rounded-lg border border-green-200 bg-green-50/50">
                 <div className="flex items-center gap-2">
                   <Building className="h-4 w-4 text-green-600" />
-                  <h3 className="text-sm font-medium">Salas más utilizadas</h3>
+                  <h3 className="text-sm font-medium">
+                    {esAdmin && !esSuperAdmin ? 'Mis salas con mayor demanda' : 'Salas con mayor demanda'}
+                  </h3>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  % de tiempo ocupado vs. disponible en el período
+                  {esAdmin && !esSuperAdmin 
+                    ? 'Salas bajo tu responsabilidad que necesitan atención' 
+                    : 'Salas que necesitan más atención administrativa'
+                  }
                 </p>
                 <div className="text-sm space-y-2">
-                  {stats.tasaUsoSalas.slice(0, 3).map((sala, index) => (
-                    <div key={index} className="flex justify-between items-center p-2 rounded bg-white/80">
-                      <span className="truncate flex-1 mr-2 text-xs" title={sala.name}>{sala.name}</span>
-                      <div className="flex items-center gap-1">
-                        <span className="font-medium text-green-700">{sala.porcentaje.toFixed(0)}%</span>
-                        <span className="text-xs text-muted-foreground">
-                          ({sala.horas.toFixed(1)}h)
-                        </span>
+                  {stats.tasaUsoSalas.slice(0, 3).map((sala, index) => {
+                    // Calcular métricas útiles para el admin (usando reservas filtradas ya aplicadas en stats)
+                    const reservasSala = reservas.filter(r => r.sala?.nombre === sala.name)
+                    const reservasPendientes = reservasSala.filter(r => r.estado === 'pendiente').length
+                    const reservasRechazadas = reservasSala.filter(r => r.estado === 'rechazada').length
+                    const tasaRechazo = reservasSala.length > 0 ? (reservasRechazadas / reservasSala.length * 100).toFixed(0) : '0'
+                    
+                    // Determinar el tipo de alerta
+                    let alertaColor = 'text-green-700'
+                    let alertaTexto = 'Sin problemas'
+                    
+                    if (reservasPendientes > 3) {
+                      alertaColor = 'text-red-700'  
+                      alertaTexto = `${reservasPendientes} pendientes`
+                    } else if (parseInt(tasaRechazo) > 30) {
+                      alertaColor = 'text-orange-700'  
+                      alertaTexto = `${tasaRechazo}% rechazadas`
+                    } else if (reservasPendientes > 0) {
+                      alertaColor = 'text-yellow-700'
+                      alertaTexto = `${reservasPendientes} pendiente${reservasPendientes > 1 ? 's' : ''}`
+                    }
+                    
+                    return (
+                      <div key={index} className="flex justify-between items-center p-2 rounded bg-white/80">
+                        <div className="flex items-center gap-2 flex-1">
+                          <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-white text-xs font-bold ${
+                            alertaColor === 'text-red-700' ? 'bg-red-500' : 
+                            alertaColor === 'text-orange-700' ? 'bg-orange-500' :
+                            alertaColor === 'text-yellow-700' ? 'bg-yellow-500' : 'bg-green-500'
+                          }`}>
+                            {index + 1}
+                          </span>
+                          <span className="truncate flex-1 text-xs font-medium" title={sala.name}>
+                            {sala.name}
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-end text-xs">
+                          <span className="font-medium text-green-700">
+                            {reservasSala.length} reservas
+                          </span>
+                          <span className={`${alertaColor} font-medium`}>
+                            {alertaTexto}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
                 <Button variant="outline" size="sm" asChild>
-                  <Link href="/gestion-salas">
-                    Gestionar salas
+                  <Link href="/aprobaciones">
+                    Gestionar pendientes
                   </Link>
                 </Button>
               </div>
@@ -1032,6 +1331,10 @@ export default function Home() {
                 <div className="flex items-center gap-1">
                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#6b7280' }}></div>
                   <span>Cancelada</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#d97706' }}></div>
+                  <span>Vencida</span>
                 </div>
               </div>
               <div className="flex gap-2">
@@ -1100,6 +1403,8 @@ export default function Home() {
                   <SelectItem value="pendiente">Pendientes</SelectItem>
                   <SelectItem value="aprobada">Aprobadas</SelectItem>
                   <SelectItem value="rechazada">Rechazadas</SelectItem>
+                  <SelectItem value="cancelada">Canceladas</SelectItem>
+                  <SelectItem value="vencida">Vencidas</SelectItem>
                 </SelectContent>
               </Select>
               
@@ -1129,7 +1434,7 @@ export default function Home() {
               initialView="timeGridWeek"
               locale={esLocale}
               slotMinTime="08:00:00"
-              slotMaxTime="20:00:00"
+              slotMaxTime="21:30:00"
               allDaySlot={false}
               headerToolbar={{
                 left: 'prev,next today',
@@ -1197,7 +1502,7 @@ export default function Home() {
               businessHours={{
                 daysOfWeek: [1, 2, 3, 4, 5, 6], // Lunes a sábado
                 startTime: '08:00',
-                endTime: '20:00',
+                endTime: '21:30',
               }}
             />
           </div>
@@ -1316,7 +1621,28 @@ export default function Home() {
                 </div>
               </div>
               
-              {reservaSeleccionada.estado === 'pendiente' && (
+              {reservaSeleccionada.estado === 'pendiente' && (() => {
+                // VALIDACIÓN DE SEGURIDAD: Solo mostrar botones si el usuario tiene permisos
+                if (esAdmin && !esSuperAdmin) {
+                  const salaIds = salasResponsable.map(sala => sala.id);
+                  const puedeGestionar = salaIds.includes(reservaSeleccionada.sala?.id);
+                  
+                  if (!puedeGestionar) {
+                    return (
+                      <div className="pt-4 border-t">
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                          <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+                          <p className="text-sm text-amber-700">
+                            No tienes permisos para gestionar reservas de esta sala.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+                }
+                
+                // Si es superadmin o admin con permisos, mostrar botones
+                return (
                 <DialogFooter className="pt-4 border-t">
                   <Button
                     variant="outline"
@@ -1332,7 +1658,8 @@ export default function Home() {
                     Aprobar
                   </Button>
                 </DialogFooter>
-              )}
+                );
+              })()}
             </div>
           )}
         </DialogContent>

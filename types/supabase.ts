@@ -39,7 +39,7 @@ export interface Database {
           fecha: string
           hora_inicio: string
           hora_fin: string
-          estado: 'pendiente' | 'aprobada' | 'rechazada' | 'cancelada'
+          estado: 'pendiente' | 'aprobada' | 'rechazada' | 'cancelada' | 'vencida'
           es_urgente: boolean
           es_externo: boolean
           es_reserva_sistema: boolean
@@ -65,7 +65,7 @@ export interface Database {
           fecha: string
           hora_inicio: string
           hora_fin: string
-          estado?: 'pendiente' | 'aprobada' | 'rechazada' | 'cancelada'
+          estado?: 'pendiente' | 'aprobada' | 'rechazada' | 'cancelada' | 'vencida'
           es_urgente?: boolean
           es_externo?: boolean
           es_reserva_sistema?: boolean
@@ -90,7 +90,7 @@ export interface Database {
           fecha?: string
           hora_inicio?: string
           hora_fin?: string
-          estado?: 'pendiente' | 'aprobada' | 'rechazada' | 'cancelada'
+          estado?: 'pendiente' | 'aprobada' | 'rechazada' | 'cancelada' | 'vencida'
           es_urgente?: boolean
           es_externo?: boolean
           es_reserva_sistema?: boolean

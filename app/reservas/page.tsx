@@ -229,9 +229,10 @@ export default function Reservas() {
         .from('reservas')
         .select(`
           *,
-          sala:salas(id, nombre),
+          sala:salas!inner(id, nombre),
           usuario:usuarios(id, nombre, apellido, email, rol)
         `)
+        .eq('sala.activo', true)  // Filtrar solo reservas de salas activas
         .gte('fecha', today)
         .order('fecha', { ascending: true })
         .order('hora_inicio', { ascending: true })
@@ -268,9 +269,10 @@ export default function Reservas() {
         .from('reservas')
         .select(`
           *,
-          sala:salas(id, nombre),
+          sala:salas!inner(id, nombre),
           usuario:usuarios(id, nombre, apellido, email, rol)
         `)
+        .eq('sala.activo', true)  // Filtrar solo reservas de salas activas
         .lt('fecha', today)
         .order('fecha', { ascending: false })
         .order('hora_inicio', { ascending: true })
@@ -326,19 +328,24 @@ export default function Reservas() {
     
     try {
       if (!loadingSalasResponsable) {
-        // Si es admin, obtener todas las salas activas para el formulario de reserva
-        if (esAdmin) {
-          console.log('Usuario admin: cargando todas las salas activas para el formulario de reserva');
+        // Para admin (no superadmin): usar solo las salas de las que es responsable
+        if (esAdmin && !esSuperAdmin) {
+          console.log('Usuario admin: usando salas responsables para formulario y filtros');
+          setSalasLocales(salasResponsable);
+        }
+        // Para superadmin: obtener todas las salas activas
+        else if (esSuperAdmin) {
+          console.log('Superadmin: cargando todas las salas activas');
           
           const { data, error } = await supabase
             .from('salas')
             .select('id, nombre')
-            .eq('activo', true)  // Solo salas activas
+            .eq('activo', true)
             .order('nombre');
             
           if (error) throw error;
           
-          console.log(`Obtenidas ${data?.length || 0} salas activas para el formulario`);
+          console.log(`Obtenidas ${data?.length || 0} salas activas para superadmin`);
           setSalasLocales(data || []);
         } else {
           // Para otros roles, usar las salas responsables
@@ -1271,6 +1278,8 @@ export default function Reservas() {
                     <SelectItem value="pendiente">Pendiente</SelectItem>
                     <SelectItem value="aprobada">Aprobada</SelectItem>
                     <SelectItem value="rechazada">Rechazada</SelectItem>
+                    <SelectItem value="cancelada">Cancelada</SelectItem>
+                    <SelectItem value="vencida">Vencida</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

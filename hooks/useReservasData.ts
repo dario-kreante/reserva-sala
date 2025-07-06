@@ -119,7 +119,7 @@ export function useReservasData() {
           codigo_asignatura,
           seccion,
           profesor_responsable,
-          sala:salas (
+          sala:salas!inner (
             id,
             nombre,
             tipo,
@@ -135,6 +135,7 @@ export function useReservasData() {
             departamento
           )
         `)
+        .eq('sala.activo', true)
         .order('fecha', { ascending: false })
 
       if (error) throw error
@@ -162,6 +163,7 @@ export function useReservasData() {
       const { data, error } = await supabase
         .from('salas')
         .select('id, nombre, tipo, capacidad, centro, descripcion')
+        .eq('activo', true)
         .order('nombre')
 
       if (error) throw error
@@ -204,6 +206,20 @@ export function useReservasData() {
       }
       
       console.log(`[${requestId}] Consultando horarios ocupados para sala ${salaId} en fecha ${fechaFormateada}`);
+      
+      // Verificar que la sala existe y está activa antes de consultar horarios
+      const { data: salaData, error: salaError } = await supabase
+        .from('salas')
+        .select('activo')
+        .eq('id', salaId)
+        .single();
+        
+      if (salaError || !salaData || !salaData.activo) {
+        console.log(`[${requestId}] Sala ${salaId} no existe o está inactiva - no se devuelven horarios ocupados`);
+        setHorariosOcupados([]);
+        setLoadingHorarios(false);
+        return [];
+      }
       
       // Limpiar horarios ocupados anteriores antes de obtener nuevos
       setHorariosOcupados([]);

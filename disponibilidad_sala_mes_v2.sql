@@ -21,7 +21,18 @@ DECLARE
   v_bloques_disponibles INTEGER;
   v_bloques_totales INTEGER;
   v_intervalo_minutos INTEGER := 30; -- Tamaño del bloque en minutos
+  v_sala_activa BOOLEAN;
 BEGIN
+  -- Verificar que la sala existe y está activa
+  SELECT activo INTO v_sala_activa
+  FROM salas 
+  WHERE id = p_sala_id;
+  
+  -- Si la sala no existe o está inactiva, no devolver ningún resultado
+  IF v_sala_activa IS NULL OR v_sala_activa = FALSE THEN
+    RETURN;
+  END IF;
+
   -- Definir el rango de fechas para el mes especificado
   v_fecha_inicio := DATE_TRUNC('month', MAKE_DATE(p_anio, p_mes, 1));
   v_fecha_fin := (DATE_TRUNC('month', MAKE_DATE(p_anio, p_mes, 1)) + INTERVAL '1 month' - INTERVAL '1 day')::DATE;

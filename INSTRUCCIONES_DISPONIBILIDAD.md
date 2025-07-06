@@ -9,7 +9,7 @@ Por ejemplo, para el lunes 10 de marzo, que tiene una reserva de 00:00 a 13:00 h
 ## Regla de negocio
 
 La regla de negocio establece que:
-- El horario en que se pueden solicitar salas es desde las 08:00 hasta las 19:00 horas.
+- El horario en que se pueden solicitar salas es desde las 08:00 hasta las 21:30 horas.
 - El bloque mínimo de solicitud es de 30 minutos.
 - Un día se considera disponible si hay al menos un bloque de 30 minutos disponible dentro del horario permitido.
 

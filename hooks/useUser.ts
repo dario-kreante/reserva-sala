@@ -21,7 +21,9 @@ export function useUser() {
         console.log('SSO ID encontrado:', ssoId, 'longitud:', ssoId.length)
 
         if (!ssoId) {
+          console.log('❌ No hay SSO ID - redirigiendo al login')
           setLoading(false)
+          router.push('/login')
           return
         }
 
@@ -63,12 +65,14 @@ export function useUser() {
         if (userData) {
           setUser(userData)
         } else {
-          console.log('No se encontró usuario con rut:', rutLimpio)
+          console.log('❌ No se encontró usuario con rut:', rutLimpio, '- redirigiendo al login')
           setUser(null)
+          router.push('/login')
         }
       } catch (error) {
-        console.error('Error in useUser:', error)
+        console.error('❌ Error in useUser:', error, '- redirigiendo al login')
         setUser(null)
+        router.push('/login')
       } finally {
         setLoading(false)
       }
